@@ -21,8 +21,10 @@ const PORT = process.env.PORT || 5000;
 
 // Security middleware
 app.use(helmet({
-  crossOriginEmbedderPolicy: false
+  crossOriginEmbedderPolicy: false,
+  crossOriginResourcePolicy: { policy: "cross-origin" }
 }));
+
 
 // Rate limiting
 const limiter = rateLimit({
@@ -40,7 +42,15 @@ const corsOptions = {
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With']
 };
-app.use(cors(corsOptions));
+app.use(cors({
+  origin: true, // Allow all origins
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS', 'HEAD'],
+  allowedHeaders: ['*'], // Allow all headers
+  exposedHeaders: ['*'], // Expose all headers
+  maxAge: 86400, // Cache preflight for 24 hours
+  optionsSuccessStatus: 200 // For legacy browser support
+}));
 
 // Logging
 if (process.env.NODE_ENV !== 'test') {
