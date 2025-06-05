@@ -1,8 +1,8 @@
 const { model } = require('../config/gemini');
 const { extractTextFromPDF } = require('./pdfService');
-const pujaPrompts = require('../prompts/pujaPrompts');
-const analysisPrompts = require('../prompts/analysisPrompts');
-const experimentPrompts = require('../prompts/experimentPrompts');
+const pujaPrompts = require('../prompts/pujaPrompt');
+const analysisPrompts = require('../prompts/analysisPrompt');
+const experimentPrompts = require('../prompts/experimentPrompt');
 
 class GeminiService {
   async generateResponse(prompt, pdfPaths = [], additionalContext = {}) {

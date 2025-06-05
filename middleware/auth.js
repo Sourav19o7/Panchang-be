@@ -1,4 +1,3 @@
-// middleware/auth.js
 const jwt = require('jsonwebtoken');
 const { supabase } = require('../config/database');
 
@@ -96,9 +95,4 @@ const requireAdmin = requireRole(['admin']);
 // Editor or Admin middleware
 const requireEditor = requireRole(['admin', 'editor']);
 
-module.exports = {
-  authMiddleware,
-  requireRole,
-  requireAdmin,
-  requireEditor
-};
+module.exports = authMiddleware;

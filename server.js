@@ -11,7 +11,7 @@ const pujaRoutes = require('./routes/puja');
 const feedbackRoutes = require('./routes/feedback');
 
 // Import middleware
-const errorHandler = require('./middleware/errorHandler');
+const errorHandler = require('./middleware/errorhandler');
 
 const app = express();
 const PORT = process.env.PORT || 5000;
