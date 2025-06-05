@@ -1,3 +1,4 @@
+// middleware/auth.js
 const jwt = require('jsonwebtoken');
 const { supabase } = require('../config/database');
 
@@ -17,7 +18,7 @@ const authMiddleware = async (req, res, next) => {
     // Verify JWT token
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
     
-    // Get user from database
+    // Get user from database to ensure they still exist and get fresh data
     const { data: user, error } = await supabase
       .from('users')
       .select(`
@@ -39,7 +40,15 @@ const authMiddleware = async (req, res, next) => {
     }
 
     // Add user to request object
-    req.user = user;
+    req.user = {
+      userId: user.id,
+      email: user.email,
+      fullName: user.full_name,
+      role: user.role,
+      createdAt: user.created_at,
+      lastLogin: user.last_login
+    };
+    
     next();
   } catch (error) {
     console.error('Auth middleware error:', error);
@@ -90,9 +99,48 @@ const requireRole = (roles) => {
 };
 
 // Admin only middleware
-const requireAdmin = requireRole(['admin']);
+const requireAdmin = (req, res, next) => {
+  if (!req.user) {
+    return res.status(401).json({
+      success: false,
+      error: 'Authentication required'
+    });
+  }
+
+  if (req.user.role !== 'admin') {
+    return res.status(403).json({
+      success: false,
+      error: 'Access denied. Admin role required.'
+    });
+  }
+
+  next();
+};
 
 // Editor or Admin middleware
-const requireEditor = requireRole(['admin', 'editor']);
+const requireEditor = (req, res, next) => {
+  if (!req.user) {
+    return res.status(401).json({
+      success: false,
+      error: 'Authentication required'
+    });
+  }
 
+  if (!['admin', 'editor'].includes(req.user.role)) {
+    return res.status(403).json({
+      success: false,
+      error: 'Access denied. Editor or Admin role required.'
+    });
+  }
+
+  next();
+};
+
+// Export the main middleware as default
 module.exports = authMiddleware;
+
+// Also export named exports for specific middleware
+module.exports.authMiddleware = authMiddleware;
+module.exports.requireRole = requireRole;
+module.exports.requireAdmin = requireAdmin;
+module.exports.requireEditor = requireEditor;

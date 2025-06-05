@@ -1,5 +1,3 @@
-
-// routes/puja.js
 const express = require('express');
 const multer = require('multer');
 const pujaController = require('../controllers/pujaController');
@@ -42,8 +40,17 @@ router.get('/propositions/history', pujaController.getHistoricalPropositions);
 router.post('/export/sheets', pujaController.exportToSheets);
 router.get('/feedback/sheets/:spreadsheetId', pujaController.getTeamFeedback);
 
-// PDF management
+// PDF management routes
 router.post('/pdfs/upload', upload.array('pdfs', 5), pujaController.uploadPDFs);
 router.get('/pdfs/list', pujaController.listPDFs);
+
+// Basic test route
+router.get('/test', (req, res) => {
+  res.json({
+    success: true,
+    message: 'Puja routes are working',
+    user: req.user ? req.user.email : 'No user'
+  });
+});
 
 module.exports = router;
