@@ -34,7 +34,7 @@ app.use(limiter);
 // CORS configuration
 const corsOptions = {
   origin: process.env.NODE_ENV === 'production' 
-    ? ['https://your-frontend-domain.com'] 
+    ? ['https://panchang-be.onrender.com'] 
     : ['http://localhost:3000', 'http://127.0.0.1:3000'],
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
