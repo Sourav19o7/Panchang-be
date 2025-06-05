@@ -23,7 +23,7 @@ class GeminiService {
         this.isConfigured = false;
       }
     } else {
-      console.warn('Gemini API key not configured, using fallback responses');
+      console.warn('Gemini API key not configured');
     }
   }
 
@@ -127,110 +127,20 @@ class GeminiService {
   }
 
   getFallbackResponse(prompt) {
-    // Enhanced fallback responses based on prompt type
-    if (prompt.includes('FOCUS_SUGGESTION') || prompt.includes('focus suggestion')) {
+    // Only provide fallback for critical errors, not as default content
+    if (!this.isConfigured) {
       return JSON.stringify({
-        focusThemes: ['Spiritual Growth & Inner Peace', 'Divine Blessings & Protection', 'Prosperity & Success'],
-        recommendedDeities: ['Ganesha', 'Lakshmi', 'Saraswati'],
-        optimalTiming: 'Morning hours between 6 AM to 10 AM for maximum spiritual energy',
-        culturalSignificance: 'Based on traditional Vedic principles and seasonal alignment',
-        topCategories: [
-          {
-            category: 'Health & Wellness',
-            performance: 'High',
-            rationale: 'Strong historical performance with consistent user engagement'
-          },
-          {
-            category: 'Career Growth',
-            performance: 'Medium-High', 
-            rationale: 'Growing demand especially during professional transition periods'
-          },
-          {
-            category: 'Financial Prosperity',
-            performance: 'High',
-            rationale: 'Consistent performer across all months with peak during festival seasons'
-          }
-        ],
-        note: 'Generated with intelligent fallback system - connect Gemini API for AI-powered insights'
-      });
-    }
-    
-    if (prompt.includes('PUJA_PROPOSITION') || prompt.includes('puja proposition')) {
-      return JSON.stringify({
-        pujaName: 'Divine Blessing Puja for Prosperity',
-        deity: 'Ganesha',
-        useCase: 'Financial Prosperity',
-        specificity: 'Traditional Ganesha worship with specialized mantras for removing financial obstacles, including sacred offerings of modak, red flowers, and durva grass. Includes personalized sankalpa (intention setting) and distribution of blessed prasadam.',
-        rationale: 'This specially curated Ganesha puja for financial prosperity combines ancient Vedic wisdom with proven spiritual practices. Lord Ganesha, revered as the remover of obstacles and lord of beginnings, holds special significance for financial matters as He governs the flow of abundance and removes barriers to prosperity. The timing aligns with favorable planetary positions that enhance the manifestation of material success. Historical data shows consistent positive outcomes for devotees who perform this puja with sincere devotion. The ritual incorporates traditional elements that have been used for centuries to invoke divine blessings for wealth creation and financial stability. The combination of proper timing, authentic procedures, and focused intention creates a powerful spiritual environment for attracting prosperity.',
-        taglines: [
-          'Unlock Divine Prosperity with Ganesha\'s Blessings',
-          'Remove Financial Obstacles, Invite Abundance',
-          'Ancient Wisdom for Modern Wealth Creation',
-          'Transform Your Financial Future Through Divine Grace',
-          'Sacred Rituals, Abundant Results'
-        ],
-        note: 'Generated with intelligent fallback system - connect Gemini API for personalized AI-powered content'
+        error: 'Gemini API not configured',
+        message: 'Please configure GEMINI_API_KEY to enable AI-powered responses',
+        fallbackUsed: true
       });
     }
 
-    if (prompt.includes('WHY_WHY_ANALYSIS') || prompt.includes('why-why analysis')) {
-      return JSON.stringify({
-        firstWhy: {
-          question: 'Why this puja on this specific date?',
-          answer: 'The astrological alignment and tithi create optimal conditions for spiritual practice and manifestation of desired outcomes.'
-        },
-        secondWhy: {
-          question: 'Why this deity for this purpose?',
-          answer: 'Traditional scriptures and historical evidence show this deity has specific domain over the desired area of life.'
-        },
-        thirdWhy: {
-          question: 'Why this timing strategy?',
-          answer: 'Market analysis and seasonal patterns indicate peak user readiness and spiritual receptivity during this period.'
-        },
-        fourthWhy: {
-          question: 'Why this approach over alternatives?',
-          answer: 'This methodology offers unique competitive advantages and proven effectiveness based on performance data.'
-        },
-        note: 'Generated with intelligent fallback system - connect Gemini API for deep AI-powered analysis'
-      });
-    }
-
-    if (prompt.includes('EXPERIMENTAL_PUJA') || prompt.includes('experimental')) {
-      return JSON.stringify({
-        experiments: [
-          {
-            name: 'Digital-Physical Harmony Puja',
-            type: 'modern_adaptation',
-            description: 'Innovative approach combining traditional rituals with modern technology for enhanced spiritual experience.',
-            riskLevel: 'medium',
-            expectedOutcome: 'Increased engagement from tech-savvy devotees while maintaining spiritual authenticity',
-            culturalJustification: 'Adapts ancient practices for contemporary lifestyle without compromising core spiritual values'
-          },
-          {
-            name: 'Multi-Deity Synergy Puja',
-            type: 'deity_combination', 
-            description: 'Strategic combination of complementary deities for comprehensive life enhancement.',
-            riskLevel: 'low',
-            expectedOutcome: 'Holistic spiritual benefits appealing to devotees seeking complete life transformation',
-            culturalJustification: 'Based on traditional Vedic principles of deity synergy found in classical texts'
-          },
-          {
-            name: 'Micro-Moment Blessing Series',
-            type: 'timing_innovation',
-            description: 'Brief but powerful focused pujas designed for busy modern schedules.',
-            riskLevel: 'high',
-            expectedOutcome: 'Higher frequency engagement and appeal to time-constrained urban devotees',
-            culturalJustification: 'Concentrates traditional practices into essential elements for maximum spiritual impact'
-          }
-        ],
-        note: 'Generated with intelligent fallback system - connect Gemini API for cutting-edge experimental concepts'
-      });
-    }
-
+    // For other errors, return a simple error response
     return JSON.stringify({
-      message: 'Intelligent fallback response provided',
-      note: 'Connect Gemini API for full AI-powered functionality',
-      recommendedAction: 'Configure GEMINI_API_KEY in environment variables for enhanced AI capabilities'
+      error: 'AI generation failed',
+      message: 'Unable to generate AI response at this time',
+      fallbackUsed: true
     });
   }
 
@@ -257,122 +167,415 @@ class GeminiService {
 
   // Enhanced puja-specific methods using professional prompts
   async generateFocusSuggestion(month, year, historicalData, seasonalEvents, pdfPaths = []) {
-    const promptData = {
-      month,
-      year,
-      historicalData,
-      seasonalEvents
-    };
+    const prompt = `You are an expert spiritual content strategist for Sri Mandir, a leading spiritual platform.
 
-    const prompt = this.replacePlaceholders(pujaPrompts.FOCUS_SUGGESTION, promptData);
+Generate a comprehensive monthly focus strategy for ${this.getMonthName(month)} ${year}.
+
+**Analysis Requirements:**
+- Historical Data: ${JSON.stringify(historicalData || [], null, 2)}
+- Seasonal Events: ${JSON.stringify(seasonalEvents || [], null, 2)}
+- Month: ${month} (${this.getMonthName(month)})
+- Year: ${year}
+
+**Required Output Format (JSON):**
+{
+  "puja_strategy": {
+    "month": ${month},
+    "year": ${year},
+    "data_sources": ["Historical Performance Data", "Seasonal Events", "Cultural Calendar"],
+    "recommendations": {
+      "top_3_puja_categories": [
+        {
+          "category": "Category Name",
+          "rationale": "Detailed explanation of why this category will perform well"
+        }
+      ],
+      "high_performing_deity_combinations": [
+        {
+          "deity_combination": "Deity 1 & Deity 2",
+          "rationale": "Explanation of why this combination works"
+        }
+      ],
+      "recommended_themes": [
+        {
+          "theme": "Theme Name",
+          "rationale": "Why this theme resonates in this month"
+        }
+      ],
+      "optimal_timing_strategies": [
+        {
+          "timing": "Specific timing recommendation",
+          "rationale": "Why this timing is optimal"
+        }
+      ]
+    }
+  }
+}
+
+**Guidelines:**
+1. Base recommendations on actual historical performance data when available
+2. Consider major festivals and cultural events for ${this.getMonthName(month)}
+3. Provide specific, actionable rationales for each recommendation
+4. Focus on authentic spiritual traditions and cultural relevance
+5. Consider seasonal energy patterns and astrological significance
+
+Generate a data-driven strategy that balances tradition with modern spiritual needs.`;
+
     return await this.generateResponse(prompt, pdfPaths);
   }
 
   async generatePujaProposition(propositionData, pdfPaths = []) {
     const { date, tithi, grahaTransit, deity, historicalData, useCase } = propositionData;
     
-    const promptData = {
-      date,
-      tithi: tithi || 'Auspicious timing',
-      grahaTransit: grahaTransit || 'Favorable planetary alignment',
-      deity,
-      historicalData,
-      useCase
-    };
+    const prompt = `You are an expert spiritual content creator for Sri Mandir. Generate a detailed puja proposition.
 
-    const prompt = this.replacePlaceholders(pujaPrompts.PUJA_PROPOSITION, promptData);
+**Puja Details:**
+- Date: ${date}
+- Tithi: ${tithi || 'Auspicious timing'}
+- Graha Transit: ${grahaTransit || 'Favorable planetary alignment'}
+- Deity: ${deity}
+- Use Case: ${useCase}
+- Historical Performance: ${JSON.stringify(historicalData || [], null, 2)}
+
+**Required Output Format (JSON):**
+{
+  "pujaName": "Specific puja name",
+  "deity": "${deity}",
+  "useCase": "${useCase}",
+  "date": "${date}",
+  "tithi": "${tithi || ''}",
+  "grahaTransit": "${grahaTransit || ''}",
+  "specificity": "Detailed ritual description with specific elements",
+  "rationale": "400-500 word explanation of timing, deity choice, and expected benefits",
+  "taglines": ["5 compelling taglines for marketing"]
+}
+
+**Requirements:**
+1. Create authentic, culturally grounded content
+2. Explain the spiritual significance and timing
+3. Include specific ritual elements and offerings
+4. Write compelling rationale that educates and inspires
+5. Generate marketing taglines that respect tradition while appealing to modern devotees
+
+Generate content that balances authenticity with accessibility.`;
+
     return await this.generateResponse(prompt, pdfPaths);
   }
 
   async generateWhyWhyAnalysis(analysisData, pdfPaths = []) {
     const { pujaName, dateInfo, deity, useCase, historicalData } = analysisData;
     
-    const promptData = {
-      pujaName,
-      dateInfo,
-      deity,
-      useCase,
-      historicalData
-    };
+    const prompt = `Perform a comprehensive "Why-Why" analysis for this puja proposition.
 
-    const prompt = this.replacePlaceholders(pujaPrompts.WHY_WHY_ANALYSIS, promptData);
+**Puja Details:**
+- Name: ${pujaName}
+- Date: ${dateInfo}
+- Deity: ${deity}
+- Use Case: ${useCase}
+- Historical Data: ${JSON.stringify(historicalData || [], null, 2)}
+
+**Required Output Format (JSON):**
+{
+  "firstWhy": {
+    "question": "Why this puja on this specific date?",
+    "answer": "Detailed explanation"
+  },
+  "secondWhy": {
+    "question": "Why this deity for this purpose?",
+    "answer": "Detailed explanation"
+  },
+  "thirdWhy": {
+    "question": "Why this timing strategy?",
+    "answer": "Detailed explanation"
+  },
+  "fourthWhy": {
+    "question": "Why this approach over alternatives?",
+    "answer": "Detailed explanation"
+  },
+  "fifthWhy": {
+    "question": "Why will this resonate with devotees?",
+    "answer": "Detailed explanation"
+  }
+}
+
+Provide deep, analytical responses that demonstrate strategic thinking.`;
+
     return await this.generateResponse(prompt, pdfPaths);
   }
 
   async generateExperimentalPuja(experimentData, pdfPaths = []) {
     const { month, performanceData, experimentParameters } = experimentData;
     
-    const promptData = {
-      month,
-      performanceGaps: this.analyzePerformanceGaps(performanceData),
-      underutilizedDeities: this.findUnderutilizedDeities(performanceData),
-      marketOpportunities: this.identifyMarketOpportunities(performanceData),
-      culturalEvents: this.getCurrentCulturalEvents(month)
-    };
+    const prompt = `Design 3 innovative experimental puja concepts for month ${month}.
 
-    const prompt = this.replacePlaceholders(pujaPrompts.EXPERIMENTAL_PUJA, promptData);
+**Analysis Data:**
+- Performance Gaps: ${JSON.stringify(this.analyzePerformanceGaps(performanceData), null, 2)}
+- Underutilized Deities: ${JSON.stringify(this.findUnderutilizedDeities(performanceData), null, 2)}
+- Market Opportunities: ${JSON.stringify(this.identifyMarketOpportunities(performanceData), null, 2)}
+
+**Required Output Format (JSON):**
+{
+  "experiments": [
+    {
+      "name": "Unique experiment name",
+      "type": "experiment_category",
+      "description": "Detailed description of the experimental approach",
+      "riskLevel": "low/medium/high",
+      "expectedOutcome": "Specific expected results",
+      "culturalJustification": "How this maintains spiritual authenticity"
+    }
+  ]
+}
+
+**Experiment Types:**
+- deity_combination: Innovative deity pairings
+- timing_innovation: New timing approaches
+- use_case_expansion: Exploring new spiritual applications
+- cultural_fusion: Blending traditions respectfully
+- modern_adaptation: Technology-enhanced spirituality
+
+Design bold but respectful innovations that could revolutionize spiritual engagement.`;
+
     return await this.generateResponse(prompt, pdfPaths);
   }
 
   // Enhanced analysis methods using professional prompts
   async analyzePerformance(performanceData, previousResults, pdfPaths = []) {
-    const promptData = {
-      performanceData,
-      previousResults
-    };
+    const prompt = `Analyze performance data and generate actionable insights.
 
-    const prompt = this.replacePlaceholders(analysisPrompts.PERFORMANCE_ANALYSIS, promptData);
+**Current Performance Data:**
+${JSON.stringify(performanceData || [], null, 2)}
+
+**Previous Results:**
+${JSON.stringify(previousResults || {}, null, 2)}
+
+**Required Output Format (JSON):**
+{
+  "performanceInsights": {
+    "topPerformers": ["List of best performing pujas"],
+    "underperformers": ["List of struggling pujas"],
+    "trends": ["Key performance trends identified"],
+    "recommendations": ["Specific improvement recommendations"]
+  },
+  "dataAnalysis": {
+    "avgRating": "number",
+    "totalRevenue": "number",
+    "engagementRate": "number",
+    "growthRate": "percentage"
+  },
+  "actionableItems": ["Specific next steps to take"]
+}
+
+Provide data-driven insights with specific recommendations.`;
+
     return await this.generateResponse(prompt, pdfPaths);
   }
 
   async synthesizeFeedback(feedbackData, pdfPaths = []) {
     const { userFeedback, teamReviews, performanceMetrics, conversionData } = feedbackData;
     
-    const promptData = {
-      userFeedback,
-      teamReviews,
-      performanceMetrics,
-      conversionData
-    };
+    const prompt = `Synthesize all feedback sources into actionable insights.
 
-    const prompt = this.replacePlaceholders(analysisPrompts.FEEDBACK_SYNTHESIS, promptData);
+**Feedback Sources:**
+- User Feedback: ${JSON.stringify(userFeedback || [], null, 2)}
+- Team Reviews: ${JSON.stringify(teamReviews || [], null, 2)}
+- Performance Metrics: ${JSON.stringify(performanceMetrics || [], null, 2)}
+- Conversion Data: ${JSON.stringify(conversionData || [], null, 2)}
+
+**Required Output Format (JSON):**
+{
+  "synthesisResults": {
+    "keyThemes": ["Major themes identified across all feedback"],
+    "userSentiment": "Overall user sentiment analysis",
+    "teamConsensus": "Areas where team agrees",
+    "performanceCorrelations": ["Connections between feedback and performance"]
+  },
+  "prioritizedRecommendations": [
+    {
+      "priority": "high/medium/low",
+      "action": "Specific action to take",
+      "rationale": "Why this action is important",
+      "expectedImpact": "Predicted outcome"
+    }
+  ]
+}
+
+Generate insights that bridge user needs with business objectives.`;
+
     return await this.generateResponse(prompt, pdfPaths);
   }
 
   async performCompetitiveAnalysis(marketData, pdfPaths = []) {
-    const promptData = marketData;
-    const prompt = this.replacePlaceholders(analysisPrompts.COMPETITIVE_ANALYSIS, promptData);
+    const prompt = `Perform competitive analysis for spiritual content market.
+
+**Market Data:**
+${JSON.stringify(marketData || {}, null, 2)}
+
+**Required Output Format (JSON):**
+{
+  "competitiveAnalysis": {
+    "marketGaps": ["Opportunities not being addressed"],
+    "competitiveAdvantages": ["Our unique strengths"],
+    "threatAssessment": "Major competitive threats",
+    "opportunityMapping": ["Specific opportunities to pursue"]
+  },
+  "strategicRecommendations": [
+    {
+      "category": "content/pricing/distribution/marketing",
+      "recommendation": "Specific strategic move",
+      "rationale": "Why this will work",
+      "timeline": "Implementation timeframe"
+    }
+  ]
+}
+
+Focus on actionable competitive intelligence.`;
+
     return await this.generateResponse(prompt, pdfPaths);
   }
 
   async optimizeSeasonalStrategy(seasonalData, pdfPaths = []) {
-    const promptData = seasonalData;
-    const prompt = this.replacePlaceholders(analysisPrompts.SEASONAL_OPTIMIZATION, promptData);
+    const prompt = `Optimize seasonal spiritual content strategy.
+
+**Seasonal Data:**
+${JSON.stringify(seasonalData || {}, null, 2)}
+
+**Required Output Format (JSON):**
+{
+  "seasonalOptimization": {
+    "seasonalRecommendations": ["Specific seasonal adjustments"],
+    "festivalIntegration": ["How to leverage upcoming festivals"],
+    "timingStrategy": ["Optimal timing approaches"],
+    "contentAdaptation": ["Content modifications needed"],
+    "resourceAllocation": ["Where to invest resources"]
+  },
+  "implementationPlan": {
+    "immediate": ["Actions to take within 1 week"],
+    "shortTerm": ["Actions for next month"],
+    "longTerm": ["Strategic seasonal planning"]
+  }
+}
+
+Provide season-specific strategies that maximize spiritual engagement.`;
+
     return await this.generateResponse(prompt, pdfPaths);
   }
 
   // Advanced experimental methods
   async conductInnovationWorkshop(innovationData, pdfPaths = []) {
-    const promptData = innovationData;
-    const prompt = this.replacePlaceholders(experimentPrompts.INNOVATION_WORKSHOP, promptData);
+    const prompt = `Conduct a virtual innovation workshop for spiritual content.
+
+**Innovation Context:**
+${JSON.stringify(innovationData || {}, null, 2)}
+
+**Required Output Format (JSON):**
+{
+  "innovationResults": {
+    "breakthroughIdeas": ["Revolutionary concepts identified"],
+    "incrementalImprovements": ["Small but impactful changes"],
+    "experimentDesigns": ["Structured experiments to test"],
+    "technologyOpportunities": ["Tech-enabled innovations"]
+  },
+  "prioritizedInnovations": [
+    {
+      "innovation": "Specific innovation concept",
+      "feasibility": "high/medium/low",
+      "impact": "high/medium/low",
+      "timeline": "Implementation time needed",
+      "resources": "Resources required"
+    }
+  ]
+}
+
+Generate bold but practical innovations for spiritual engagement.`;
+
     return await this.generateResponse(prompt, pdfPaths);
   }
 
   async designABTest(testData, pdfPaths = []) {
-    const promptData = testData;
-    const prompt = this.replacePlaceholders(experimentPrompts.AB_TEST_DESIGN, promptData);
+    const prompt = `Design a comprehensive A/B test for spiritual content.
+
+**Test Parameters:**
+${JSON.stringify(testData || {}, null, 2)}
+
+**Required Output Format (JSON):**
+{
+  "testDesign": {
+    "hypothesis": "Clear testable hypothesis",
+    "variables": ["Specific variables to test"],
+    "controlGroup": "Control group definition",
+    "testGroups": ["Test group definitions"],
+    "successMetrics": ["How to measure success"],
+    "testDuration": "Recommended test duration",
+    "sampleSize": "Required sample size"
+  },
+  "implementationGuide": {
+    "setup": ["Setup instructions"],
+    "monitoring": ["What to monitor during test"],
+    "analysis": ["How to analyze results"]
+  }
+}
+
+Design rigorous tests that generate reliable insights.`;
+
     return await this.generateResponse(prompt, pdfPaths);
   }
 
   async generateBreakthroughIdeas(innovationParameters, pdfPaths = []) {
-    const promptData = innovationParameters;
-    const prompt = this.replacePlaceholders(experimentPrompts.BREAKTHROUGH_IDEATION, promptData);
+    const prompt = `Generate breakthrough ideas for spiritual technology and engagement.
+
+**Innovation Parameters:**
+${JSON.stringify(innovationParameters || {}, null, 2)}
+
+**Required Output Format (JSON):**
+{
+  "breakthroughConcepts": [
+    {
+      "concept": "Revolutionary idea name",
+      "description": "Detailed concept description",
+      "innovation": "What makes this breakthrough",
+      "spiritualValue": "Spiritual benefit provided",
+      "technicalFeasibility": "Technical implementation notes",
+      "marketPotential": "Market opportunity size"
+    }
+  ],
+  "implementationRoadmap": {
+    "phase1": "Initial development phase",
+    "phase2": "Testing and refinement phase",
+    "phase3": "Full deployment phase"
+  }
+}
+
+Think beyond current limitations to imagine revolutionary spiritual experiences.`;
+
     return await this.generateResponse(prompt, pdfPaths);
   }
 
   async designRapidPrototype(prototypingData, pdfPaths = []) {
-    const promptData = prototypingData;
-    const prompt = this.replacePlaceholders(experimentPrompts.RAPID_PROTOTYPING, promptData);
+    const prompt = `Design a rapid prototype for spiritual content innovation.
+
+**Prototyping Data:**
+${JSON.stringify(prototypingData || {}, null, 2)}
+
+**Required Output Format (JSON):**
+{
+  "prototypeDesign": {
+    "concept": "What we're prototyping",
+    "mvpFeatures": ["Minimum viable features"],
+    "userJourney": ["Step-by-step user experience"],
+    "technicalRequirements": ["Technical needs"],
+    "testingApproach": "How to validate the prototype"
+  },
+  "developmentPlan": {
+    "week1": ["Week 1 deliverables"],
+    "week2": ["Week 2 deliverables"],
+    "testing": ["Testing and feedback collection"],
+    "iteration": ["Improvement plan based on feedback"]
+  }
+}
+
+Design lean, testable prototypes that validate innovative concepts quickly.`;
+
     return await this.generateResponse(prompt, pdfPaths);
   }
 
@@ -440,6 +643,12 @@ class GeminiService {
     };
 
     return monthEvents[month] || ['General spiritual observances'];
+  }
+
+  getMonthName(month) {
+    const monthNames = ['', 'January', 'February', 'March', 'April', 'May', 'June',
+      'July', 'August', 'September', 'October', 'November', 'December'];
+    return monthNames[month] || 'Unknown';
   }
 
   // Utility method for custom prompts with professional template structure

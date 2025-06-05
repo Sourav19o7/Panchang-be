@@ -41,11 +41,59 @@ class PujaController {
         pdfFiles || []
       );
 
-      console.log("parsed Suggestions", suggestions)
+      console.log("Raw AI Suggestions:", suggestions);
+      
       // Parse the suggestions with better error handling
-      const parsedSuggestions = this?.parseAIResponse(suggestions, 
-        this.generateFallbackSuggestions(month, year, historicalData, seasonalEvents)
-      );
+      const parsedSuggestions = this.parseAIResponse(suggestions);
+      
+      console.log("Parsed Suggestions:", parsedSuggestions);
+
+      // Transform the AI response to match frontend expectations
+      let formattedSuggestions;
+      
+      if (parsedSuggestions.puja_strategy) {
+        // Handle the new AI response format
+        const strategy = parsedSuggestions.puja_strategy;
+        formattedSuggestions = {
+          focusThemes: strategy.recommendations?.recommended_themes?.map(t => t.theme) || [],
+          recommendedDeities: this.extractDeitiesFromResponse(strategy),
+          optimalTiming: this.extractOptimalTiming(strategy),
+          culturalSignificance: this.extractCulturalSignificance(strategy, month),
+          topCategories: strategy.recommendations?.top_3_puja_categories?.map(cat => ({
+            category: cat.category,
+            performance: 'High',
+            rationale: cat.rationale
+          })) || [],
+          deityCominations: strategy.recommendations?.high_performing_deity_combinations || [],
+          timingStrategies: strategy.recommendations?.optimal_timing_strategies || [],
+          dataNote: `Analysis based on ${historicalData?.length || 0} historical records and ${seasonalEvents?.length || 0} seasonal events`
+        };
+      } else if (parsedSuggestions.focusThemes) {
+        // Handle the old format
+        formattedSuggestions = parsedSuggestions;
+      } else if (parsedSuggestions.error) {
+        // Handle error responses
+        formattedSuggestions = {
+          focusThemes: [],
+          recommendedDeities: [],
+          optimalTiming: '',
+          culturalSignificance: `Month ${month} offers unique spiritual opportunities`,
+          topCategories: [],
+          error: parsedSuggestions.error,
+          errorDetails: parsedSuggestions.message || 'AI generation failed'
+        };
+      } else {
+        // Handle unexpected formats
+        formattedSuggestions = {
+          focusThemes: [],
+          recommendedDeities: [],
+          optimalTiming: '',
+          culturalSignificance: `Month ${month} offers unique spiritual opportunities`,
+          topCategories: [],
+          error: 'Could not parse AI response properly',
+          rawResponse: parsedSuggestions
+        };
+      }
 
       // Save suggestions to database
       const { data: savedSuggestion } = await supabase
@@ -54,7 +102,7 @@ class PujaController {
           month,
           year,
           theme,
-          suggestions: parsedSuggestions,
+          suggestions: formattedSuggestions,
           created_by: req.user?.id
         })
         .select()
@@ -63,7 +111,7 @@ class PujaController {
       res.json({
         success: true,
         data: {
-          suggestions: parsedSuggestions,
+          suggestions: formattedSuggestions,
           historicalContext: historicalData || [],
           seasonalContext: seasonalEvents || [],
           suggestionId: savedSuggestion?.id
@@ -76,48 +124,6 @@ class PujaController {
         error: error.message || 'Failed to generate focus suggestions'
       });
     }
-  }
-
-  // Helper method for fallback suggestions
-  generateFallbackSuggestions(month, year, historicalData, seasonalEvents) {
-    const monthNames = [
-      'January', 'February', 'March', 'April', 'May', 'June',
-      'July', 'August', 'September', 'October', 'November', 'December'
-    ];
-
-    const monthName = monthNames[month - 1];
-    const festivals = seasonalEvents?.map(e => e.name) || [];
-
-    return {
-      focusThemes: [
-        `${monthName} Spiritual Enhancement`,
-        'Divine Blessings & Protection',
-        'Prosperity & Well-being'
-      ],
-      recommendedDeities: ['Ganesha', 'Lakshmi', 'Saraswati', 'Vishnu'],
-      optimalTiming: 'Early morning hours (6 AM - 8 AM) and evening twilight (6 PM - 8 PM)',
-      culturalSignificance: `${monthName} offers unique spiritual opportunities aligned with seasonal energies`,
-      topCategories: [
-        {
-          category: 'Health & Wellness',
-          performance: 'High',
-          rationale: `Strong consistent performance across ${monthName} periods`
-        },
-        {
-          category: 'Financial Prosperity',
-          performance: 'High',
-          rationale: 'Universal appeal with proven engagement metrics'
-        },
-        {
-          category: 'Spiritual Progress',
-          performance: 'Medium-High',
-          rationale: `${monthName} energy supports deep spiritual practices`
-        }
-      ],
-      festivals: festivals,
-      dataNote: `Analysis based on ${historicalData?.length || 0} historical records and ${seasonalEvents?.length || 0} seasonal events`,
-      fallbackUsed: true
-    };
   }
 
   // Generate monthly Panchang data
@@ -306,24 +312,10 @@ class PujaController {
           );
 
           // Parse with better error handling
-          try {
-            proposition = JSON.parse(aiResponse);
-          } catch (parseError) {
-            console.warn('JSON Parse Error for proposition:', parseError.message);
-            console.log('Raw AI Response:', aiResponse);
-            
-            // Try to extract JSON from the response
-            const jsonMatch = aiResponse.match(/\{[\s\S]*\}/);
-            if (jsonMatch) {
-              try {
-                proposition = JSON.parse(jsonMatch[0]);
-              } catch (extractError) {
-                console.warn('JSON Extract Error:', extractError.message);
-                proposition = this.generateEnhancedProposition(dateInfo, focusTheme);
-              }
-            } else {
-              proposition = this.generateEnhancedProposition(dateInfo, focusTheme);
-            }
+          proposition = this.parseAIResponse(aiResponse);
+          
+          if (proposition.error) {
+            proposition = this.generateEnhancedProposition(dateInfo, focusTheme);
           }
         } catch (aiError) {
           console.warn('AI generation failed, using enhanced template:', aiError.message);
@@ -373,54 +365,6 @@ class PujaController {
     }
   }
 
-  // Enhanced proposition generator
-  generateEnhancedProposition(dateInfo, focusTheme) {
-    const { date, deity, useCase, tithi, grahaTransit } = dateInfo;
-    
-    // Enhanced rationale generation based on inputs
-    const deityWisdom = {
-      'Ganesha': 'Lord Ganesha, the remover of obstacles and lord of beginnings, is particularly powerful for new ventures and overcoming challenges.',
-      'Lakshmi': 'Goddess Lakshmi, the divine source of wealth and prosperity, blesses devotees with abundance and fortune.',
-      'Saraswati': 'Goddess Saraswati, the embodiment of knowledge and wisdom, enhances learning and creative abilities.',
-      'Shiva': 'Lord Shiva, the supreme consciousness and destroyer of ignorance, grants spiritual transformation and inner peace.',
-      'Durga': 'Goddess Durga, the divine mother and protector, provides strength and protection from negative forces.'
-    };
-
-    const useCaseContext = {
-      'Health & Wellness': 'focusing on physical vitality, mental clarity, and overall well-being through divine intervention',
-      'Career Growth': 'channeling divine energy to remove career obstacles and attract professional opportunities',
-      'Financial Prosperity': 'invoking divine blessings for wealth creation and financial stability',
-      'Relationship Harmony': 'seeking divine grace for love, understanding, and harmonious relationships',
-      'Spiritual Progress': 'deepening spiritual connection and advancing on the path of self-realization'
-    };
-
-    const rationale = `This specially curated ${deity} puja for ${useCase.toLowerCase()} is designed with profound spiritual significance. ${deityWisdom[deity] || `${deity} is revered for divine blessings and spiritual protection.`} 
-
-The timing on ${date}${tithi ? ` during ${tithi}` : ''} is particularly auspicious as per Vedic traditions. ${grahaTransit ? `The current planetary alignment (${grahaTransit}) enhances the spiritual potency of this ritual.` : 'The celestial energies during this period are highly favorable for spiritual practices.'}
-
-This puja incorporates ${useCaseContext[useCase] || 'seeking divine blessings for positive transformation'}. The ritual includes specific mantras, offerings, and meditation practices that have been used for centuries to invoke divine grace.
-
-${focusTheme ? `Aligned with the monthly theme of "${focusTheme}", this puja ` : 'This puja '}creates a powerful spiritual environment where devotees can connect with divine consciousness and manifest their spiritual intentions. The combination of proper timing, traditional rituals, and sincere devotion amplifies the transformative power of this sacred practice.`;
-
-    return {
-      pujaName: `${deity} ${useCase} Puja`,
-      deity: deity,
-      useCase: useCase,
-      date: date,
-      tithi: tithi || '',
-      grahaTransit: grahaTransit || '',
-      specificity: `Traditional ${deity} worship with specialized mantras, authentic offerings (flowers, fruits, incense), and guided meditation for ${useCase.toLowerCase()}. Includes personalized sankalpa (intention setting) and prasadam distribution.`,
-      rationale: rationale,
-      taglines: [
-        `Invoke ${deity}'s Divine Blessings`,
-        `Transform Your Life Through ${useCase}`,
-        'Ancient Wisdom for Modern Challenges',
-        `Experience ${deity}'s Grace`,
-        'Sacred Rituals, Powerful Results'
-      ]
-    };
-  }
-
   // Generate experimental pujas
   async generateExperimentalPujas(req, res) {
     try {
@@ -456,31 +400,11 @@ ${focusTheme ? `Aligned with the monthly theme of "${focusTheme}", this puja ` :
           experimentParameters
         }, pdfFiles || []);
 
-        experiments = this.parseAIResponse(experiments, {
-          experiments: [
-            {
-              name: `Digital Deity Connection - ${month}/${year}`,
-              type: 'modern_adaptation',
-              description: 'A contemporary approach to traditional worship combining virtual reality visualization with ancient mantras for enhanced spiritual experience.',
-              riskLevel: 'medium',
-              expectedOutcome: 'Increased engagement from tech-savvy devotees and improved accessibility for remote participants'
-            },
-            {
-              name: 'Planetary Harmony Fusion Puja',
-              type: 'deity_combination',
-              description: 'An innovative multi-deity worship combining Navagraha influences with seasonal deities for comprehensive life balance.',
-              riskLevel: 'low',
-              expectedOutcome: 'Holistic spiritual benefits and appeal to devotees seeking complete life transformation'
-            },
-            {
-              name: 'Micro-Moment Meditation Series',
-              type: 'timing_innovation',
-              description: 'Brief but powerful 5-minute focused pujas designed for busy modern lifestyles, timed with peak astrological moments.',
-              riskLevel: 'high',
-              expectedOutcome: 'Higher frequency engagement and appeal to time-constrained urban devotees'
-            }
-          ]
-        });
+        experiments = this.parseAIResponse(experiments);
+        
+        if (experiments.error) {
+          throw new Error('AI generation failed');
+        }
       } catch (aiError) {
         console.warn('AI generation failed, using structured experiments:', aiError.message);
         
@@ -769,123 +693,6 @@ ${focusTheme ? `Aligned with the monthly theme of "${focusTheme}", this puja ` :
     }
   }
 
-  // Upload PDF files with enhanced processing
-  async uploadPDFs(req, res) {
-    try {
-      if (!req.files || req.files.length === 0) {
-        return res.status(400).json({
-          success: false,
-          error: 'No PDF files uploaded'
-        });
-      }
-
-      const uploadResults = [];
-
-      for (const file of req.files) {
-        try {
-          // Save PDF file
-          const saveResult = await pdfService.savePDF(file.buffer, file.originalname);
-          
-          // Extract text content
-          const textContent = await pdfService.extractTextFromPDF(file.originalname);
-          
-          // Save file info to database
-          const { data: savedFile } = await supabase
-            .from('uploaded_files')
-            .insert({
-              filename: file.originalname,
-              file_size: file.size,
-              content_preview: textContent.text.substring(0, 500),
-              pages: textContent.numPages,
-              uploaded_by: req.user?.id,
-              file_type: 'pdf'
-            })
-            .select()
-            .single();
-
-          uploadResults.push({
-            filename: file.originalname,
-            size: file.size,
-            pages: textContent.numPages,
-            success: true,
-            fileId: savedFile?.id,
-            message: 'File processed and indexed successfully'
-          });
-        } catch (error) {
-          uploadResults.push({
-            filename: file.originalname,
-            success: false,
-            error: error.message
-          });
-        }
-      }
-
-      res.json({
-        success: true,
-        data: uploadResults
-      });
-    } catch (error) {
-      console.error('Error uploading PDFs:', error);
-      res.status(500).json({
-        success: false,
-        error: error.message || 'Failed to upload PDFs'
-      });
-    }
-  }
-
-  // List available PDFs with metadata
-  async listPDFs(req, res) {
-    try {
-      // Get from database first
-      const { data: dbFiles } = await supabase
-        .from('uploaded_files')
-        .select('*')
-        .eq('file_type', 'pdf')
-        .order('created_at', { ascending: false });
-
-      let availablePDFs = [];
-
-      try {
-        // Get actual files from filesystem
-        const fileSystemPDFs = await pdfService.listAvailablePDFs();
-        
-        // Combine database info with filesystem info
-        availablePDFs = fileSystemPDFs.map(filename => {
-          const dbInfo = dbFiles?.find(f => f.filename === filename);
-          return {
-            filename,
-            size: dbInfo?.file_size || 0,
-            pages: dbInfo?.pages || 0,
-            uploadedAt: dbInfo?.created_at || new Date().toISOString(),
-            uploadedBy: dbInfo?.uploaded_by || 'Unknown'
-          };
-        });
-      } catch (fsError) {
-        console.warn('File system access limited:', fsError.message);
-        
-        // Return database records only
-        availablePDFs = (dbFiles || []).map(file => ({
-          filename: file.filename,
-          size: file.file_size,
-          pages: file.pages,
-          uploadedAt: file.created_at,
-          uploadedBy: file.uploaded_by
-        }));
-      }
-
-      res.json({
-        success: true,
-        data: availablePDFs
-      });
-    } catch (error) {
-      console.error('Error listing PDFs:', error);
-      res.status(500).json({
-        success: false,
-        error: error.message || 'Failed to list PDFs'
-      });
-    }
-  }
-
   // Get puja statistics
   async getPujaStatistics(req, res) {
     try {
@@ -985,7 +792,7 @@ ${focusTheme ? `Aligned with the monthly theme of "${focusTheme}", this puja ` :
     }
   }
 
-  // Additional controller methods
+  // Save focus suggestion
   async saveFocusSuggestion(req, res) {
     try {
       const { month, year, theme, suggestions, notes } = req.body;
@@ -1121,767 +928,61 @@ ${focusTheme ? `Aligned with the monthly theme of "${focusTheme}", this puja ` :
     }
   }
 
-  async searchPropositions(req, res) {
-    try {
-      const { 
-        query: searchQuery, 
-        deity, 
-        useCase, 
-        status, 
-        dateFrom, 
-        dateTo,
-        limit = 20,
-        offset = 0 
-      } = req.query;
-
-      let query = supabase
-        .from('puja_propositions')
-        .select('*', { count: 'exact' })
-        .order('created_at', { ascending: false })
-        .range(parseInt(offset), parseInt(offset) + parseInt(limit) - 1);
-
-      // Apply filters
-      if (deity) {
-        query = query.contains('proposition_data', { deity });
-      }
-      if (useCase) {
-        query = query.contains('proposition_data', { useCase });
-      }
-      if (status) {
-        query = query.eq('status', status);
-      }
-      if (dateFrom) {
-        query = query.gte('date', dateFrom);
-      }
-      if (dateTo) {
-        query = query.lte('date', dateTo);
-      }
-
-      // Text search in proposition data
-      if (searchQuery) {
-        query = query.textSearch('proposition_data', searchQuery);
-      }
-
-      const { data, count, error } = await query;
-
-      if (error) throw error;
-
-      res.json({
-        success: true,
-        data: data || [],
-        total: count || 0,
-        searchQuery,
-        filters: { deity, useCase, status, dateFrom, dateTo }
-      });
-    } catch (error) {
-      console.error('Error searching propositions:', error);
-      res.status(500).json({
-        success: false,
-        error: error.message || 'Failed to search propositions'
-      });
-    }
-  }
-
-  async updatePropositionStatus(req, res) {
-    try {
-      const { id } = req.params;
-      const { status, teamNotes, approvedBy } = req.body;
-
-      const validStatuses = ['pending_review', 'approved', 'rejected', 'in_progress', 'completed'];
-      if (!validStatuses.includes(status)) {
-        return res.status(400).json({
-          success: false,
-          error: 'Invalid status'
-        });
-      }
-
-      const { data: updated, error } = await supabase
-        .from('puja_propositions')
-        .update({
-          status,
-          team_notes: teamNotes,
-          approved_by: approvedBy || req.user?.id,
-          updated_at: new Date().toISOString()
-        })
-        .eq('id', id)
-        .select()
-        .single();
-
-      if (error) throw error;
-
-      res.json({
-        success: true,
-        data: updated
-      });
-    } catch (error) {
-      console.error('Error updating proposition status:', error);
-      res.status(500).json({
-        success: false,
-        error: error.message || 'Failed to update proposition status'
-      });
-    }
-  }
-
-  async deleteProposition(req, res) {
-    try {
-      const { id } = req.params;
-
-      const { error } = await supabase
-        .from('puja_propositions')
-        .delete()
-        .eq('id', id);
-
-      if (error) throw error;
-
-      res.json({
-        success: true,
-        message: 'Proposition deleted successfully'
-      });
-    } catch (error) {
-      console.error('Error deleting proposition:', error);
-      res.status(500).json({
-        success: false,
-        error: error.message || 'Failed to delete proposition'
-      });
-    }
-  }
-
-  async cloneProposition(req, res) {
-    try {
-      const { id } = req.params;
-      const { newDate, modifications } = req.body;
-
-      // Get original proposition
-      const { data: original, error: fetchError } = await supabase
-        .from('puja_propositions')
-        .select('*')
-        .eq('id', id)
-        .single();
-
-      if (fetchError || !original) {
-        return res.status(404).json({
-          success: false,
-          error: 'Proposition not found'
-        });
-      }
-
-      // Create clone with modifications
-      const clonedData = {
-        ...original.proposition_data,
-        ...modifications,
-        date: newDate || original.date
-      };
-
-      const { data: cloned, error: cloneError } = await supabase
-        .from('puja_propositions')
-        .insert({
-          month: original.month,
-          year: original.year,
-          date: newDate || original.date,
-          proposition_data: clonedData,
-          status: 'pending_review',
-          created_by: req.user?.id
-        })
-        .select()
-        .single();
-
-      if (cloneError) throw cloneError;
-
-      res.json({
-        success: true,
-        data: cloned
-      });
-    } catch (error) {
-      console.error('Error cloning proposition:', error);
-      res.status(500).json({
-        success: false,
-        error: error.message || 'Failed to clone proposition'
-      });
-    }
-  }
-
-  async generateWhyWhyAnalysis(req, res) {
-    try {
-      const { propositionId, analysisData } = req.body;
-
-      // Get proposition data
-      const { data: proposition } = await supabase
-        .from('puja_propositions')
-        .select('*')
-        .eq('id', propositionId)
-        .single();
-
-      if (!proposition) {
-        return res.status(404).json({
-          success: false,
-          error: 'Proposition not found'
-        });
-      }
-
-      // Generate why-why analysis
-      const analysis = await geminiService.generateWhyWhyAnalysis({
-        pujaName: proposition.proposition_data?.pujaName,
-        dateInfo: proposition.date,
-        deity: proposition.proposition_data?.deity,
-        useCase: proposition.proposition_data?.useCase,
-        historicalData: analysisData?.historicalData || []
-      });
-
-      res.json({
-        success: true,
-        data: {
-          analysis: typeof analysis === 'string' ? JSON.parse(analysis) : analysis,
-          propositionId
-        }
-      });
-    } catch (error) {
-      console.error('Error generating why-why analysis:', error);
-      res.status(500).json({
-        success: false,
-        error: error.message || 'Failed to generate why-why analysis'
-      });
-    }
-  }
-
-  async getSeasonalEvents(req, res) {
-    try {
-      const { month } = req.query;
-
-      if (!month) {
-        return res.status(400).json({
-          success: false,
-          error: 'Month is required'
-        });
-      }
-
-      const { data: events, error } = await supabase
-        .from('seasonal_events')
-        .select('*')
-        .eq('month', parseInt(month))
-        .order('day', { ascending: true });
-
-      if (error) throw error;
-
-      res.json({
-        success: true,
-        data: events || []
-      });
-    } catch (error) {
-      console.error('Error getting seasonal events:', error);
-      res.status(500).json({
-        success: false,
-        error: error.message || 'Failed to get seasonal events'
-      });
-    }
-  }
-
-  async exportPanchangData(req, res) {
-    try {
-      const { month, year, location, format = 'csv' } = req.body;
-
-      // Get Panchang data
-      const { data: panchangRecord } = await supabase
-        .from('panchang_data')
-        .select('data')
-        .eq('month', parseInt(month))
-        .eq('year', parseInt(year))
-        .eq('location', location)
-        .single();
-
-      if (!panchangRecord?.data?.data) {
-        return res.status(404).json({
-          success: false,
-          error: 'Panchang data not found'
-        });
-      }
-
-      const data = panchangRecord.data.data;
-
-      if (format === 'csv') {
-        // Convert to CSV format
-        const csvHeader = 'Date,Tithi,Nakshatra,Yog,Karan,Sunrise,Sunset,Festivals\n';
-        const csvRows = data.map(day => 
-          `${day.date},${day.tithi},${day.nakshatra},${day.yog || ''},${day.karan || ''},${day.sunrise || ''},${day.sunset || ''},"${day.festivals?.join('; ') || ''}"`
-        );
-        
-        const csvContent = csvHeader + csvRows.join('\n');
-        
-        res.setHeader('Content-Type', 'text/csv');
-        res.setHeader('Content-Disposition', `attachment; filename=panchang-${month}-${year}-${location}.csv`);
-        res.send(csvContent);
-      } else {
-        res.json({
-          success: true,
-          data: data,
-          format: 'json'
-        });
-      }
-    } catch (error) {
-      console.error('Error exporting Panchang data:', error);
-      res.status(500).json({
-        success: false,
-        error: error.message || 'Failed to export Panchang data'
-      });
-    }
-  }
-
-  async bulkUpdatePropositions(req, res) {
-    try {
-      const { propositionIds, updates } = req.body;
-
-      if (!propositionIds || !Array.isArray(propositionIds)) {
-        return res.status(400).json({
-          success: false,
-          error: 'Proposition IDs array is required'
-        });
-      }
-
-      const { data: updated, error } = await supabase
-        .from('puja_propositions')
-        .update({
-          ...updates,
-          updated_at: new Date().toISOString()
-        })
-        .in('id', propositionIds)
-        .select();
-
-      if (error) throw error;
-
-      res.json({
-        success: true,
-        data: updated,
-        updatedCount: updated?.length || 0
-      });
-    } catch (error) {
-      console.error('Error bulk updating propositions:', error);
-      res.status(500).json({
-        success: false,
-        error: error.message || 'Failed to bulk update propositions'
-      });
-    }
-  }
-
-  async getPropositionsByCategory(req, res) {
-    try {
-      const { category } = req.params;
-      const { limit = 20, offset = 0 } = req.query;
-
-      let query = supabase
-        .from('puja_propositions')
-        .select('*', { count: 'exact' })
-        .order('created_at', { ascending: false })
-        .range(parseInt(offset), parseInt(offset) + parseInt(limit) - 1);
-
-      // Apply category filter
-      switch (category) {
-        case 'deity':
-          // Group by deity
-          query = query.order('proposition_data->deity', { ascending: true });
-          break;
-        case 'usecase':
-          // Group by use case
-          query = query.order('proposition_data->useCase', { ascending: true });
-          break;
-        case 'status':
-          // Group by status
-          query = query.order('status', { ascending: true });
-          break;
-        case 'month':
-          // Group by month
-          query = query.order('month', { ascending: true });
-          break;
-        default:
-          return res.status(400).json({
-            success: false,
-            error: 'Invalid category'
-          });
-      }
-
-      const { data, count, error } = await query;
-
-      if (error) throw error;
-
-      res.json({
-        success: true,
-        data: data || [],
-        total: count || 0,
-        category
-      });
-    } catch (error) {
-      console.error('Error getting propositions by category:', error);
-      res.status(500).json({
-        success: false,
-        error: error.message || 'Failed to get propositions by category'
-      });
-    }
-  }
-
-  async generatePropositionVariations(req, res) {
-    try {
-      const { id } = req.params;
-      const { variationCount = 3, variationTypes } = req.body;
-
-      // Get original proposition
-      const { data: original } = await supabase
-        .from('puja_propositions')
-        .select('*')
-        .eq('id', id)
-        .single();
-
-      if (!original) {
-        return res.status(404).json({
-          success: false,
-          error: 'Proposition not found'
-        });
-      }
-
-      // Generate variations using AI
-      const variations = await geminiService.generatePropositionVariations({
-        originalProposition: original.proposition_data,
-        variationCount,
-        variationTypes: variationTypes || ['timing', 'deity_combination', 'use_case_expansion']
-      });
-
-      res.json({
-        success: true,
-        data: {
-          original: original,
-          variations: typeof variations === 'string' ? JSON.parse(variations) : variations
-        }
-      });
-    } catch (error) {
-      console.error('Error generating proposition variations:', error);
-      res.status(500).json({
-        success: false,
-        error: error.message || 'Failed to generate proposition variations'
-      });
-    }
-  }
-
-  // Advanced analysis methods using professional prompts
-  async performCompetitiveAnalysis(req, res) {
-    try {
-      const { competitorData, marketTrends, userPreferences } = req.body;
-
-      // Get our performance data for comparison
-      const { data: ourPerformance } = await supabase
-        .from('puja_propositions')
-        .select(`
-          proposition_data,
-          performance_score,
-          puja_feedback (rating, ctr, revenue)
-        `)
-        .not('performance_score', 'is', null)
-        .order('performance_score', { ascending: false })
-        .limit(50);
-
-      const analysis = await geminiService.performCompetitiveAnalysis({
-        competitorData: competitorData || [],
-        marketTrends: marketTrends || [],
-        userPreferences: userPreferences || [],
-        ourPerformance: ourPerformance || []
-      });
-
-      const parsedAnalysis = this.parseAIResponse(analysis, {
-        marketGaps: ['Youth engagement opportunities', 'Digital spiritual experiences', 'Personalized content delivery'],
-        competitiveAdvantages: ['Cultural authenticity', 'AI-powered personalization', 'Comprehensive spiritual guidance'],
-        recommendations: ['Focus on mobile-first experiences', 'Develop community features', 'Enhance personalization algorithms'],
-        threatAssessment: 'Medium - competitors gaining ground in digital space',
-        opportunityMapping: ['Untapped international markets', 'Corporate wellness programs', 'Educational partnerships']
-      });
-
-      // Save analysis
-      const { data: savedAnalysis } = await supabase
-        .from('competitive_analysis')
-        .insert({
-          analysis_data: parsedAnalysis,
-          market_data: { competitorData, marketTrends, userPreferences },
-          created_by: req.user?.id
-        })
-        .select()
-        .single();
-
-      res.json({
-        success: true,
-        data: {
-          analysis: parsedAnalysis,
-          analysisId: savedAnalysis?.id
-        }
-      });
-    } catch (error) {
-      console.error('Error performing competitive analysis:', error);
-      res.status(500).json({
-        success: false,
-        error: error.message || 'Failed to perform competitive analysis'
-      });
-    }
-  }
-
-  async optimizeSeasonalStrategy(req, res) {
-    try {
-      const { season, month, year } = req.body;
-
-      // Get seasonal performance data
-      const { data: seasonalPerformance } = await supabase
-        .from('puja_propositions')
-        .select(`
-          month,
-          proposition_data,
-          performance_score,
-          puja_feedback (rating, ctr, revenue)
-        `)
-        .eq('month', month)
-        .order('year', { ascending: false })
-        .limit(100);
-
-      // Get upcoming festivals for the season
-      const { data: festivals } = await supabase
-        .from('seasonal_events')
-        .select('*')
-        .eq('month', month);
-
-      const optimization = await geminiService.optimizeSeasonalStrategy({
-        season: season || this.getSeason(month),
-        festivals: festivals || [],
-        seasonalData: seasonalPerformance || [],
-        culturalCalendar: festivals || [],
-        weatherData: this.getWeatherContext(month)
-      });
-
-      const parsedOptimization = this.parseAIResponse(optimization, {
-        seasonalRecommendations: [`Optimize for ${season || this.getSeason(month)} energy patterns`],
-        festivalIntegration: festivals?.map(f => `Leverage ${f.name} for enhanced engagement`) || [],
-        timingStrategy: ['Focus on weekend spiritual activities', 'Align with natural energy cycles'],
-        contentAdaptation: ['Seasonal themes in messaging', 'Weather-appropriate ritual suggestions'],
-        resourceAllocation: ['Increase marketing during peak season', 'Prepare seasonal content in advance']
-      });
-
-      res.json({
-        success: true,
-        data: {
-          optimization: parsedOptimization,
-          season: season || this.getSeason(month),
-          month,
-          year
-        }
-      });
-    } catch (error) {
-      console.error('Error optimizing seasonal strategy:', error);
-      res.status(500).json({
-        success: false,
-        error: error.message || 'Failed to optimize seasonal strategy'
-      });
-    }
-  }
-
-  // Advanced experimental methods
-  async conductInnovationWorkshop(req, res) {
-    try {
-      const { currentOfferings, marketGaps, emergingTrends, techOpportunities } = req.body;
-
-      // Get user feedback themes
-      const { data: feedbackData } = await supabase
-        .from('puja_feedback')
-        .select('user_feedback, learnings')
-        .not('user_feedback', 'is', null)
-        .order('created_at', { ascending: false })
-        .limit(100);
-
-      const workshop = await geminiService.conductInnovationWorkshop({
-        currentOfferings: currentOfferings || [],
-        marketGaps: marketGaps || [],
-        emergingTrends: emergingTrends || [],
-        techOpportunities: techOpportunities || [],
-        feedbackThemes: this.extractFeedbackThemes(feedbackData)
-      });
-
-      const parsedWorkshop = JSON.parse(workshop);
-
-      // Save workshop results
-      const { data: savedWorkshop } = await supabase
-        .from('innovation_workshops')
-        .insert({
-          workshop_data: parsedWorkshop,
-          input_parameters: { currentOfferings, marketGaps, emergingTrends, techOpportunities },
-          created_by: req.user?.id
-        })
-        .select()
-        .single();
-
-      res.json({
-        success: true,
-        data: {
-          workshop: parsedWorkshop,
-          workshopId: savedWorkshop?.id
-        }
-      });
-    } catch (error) {
-      console.error('Error conducting innovation workshop:', error);
-      res.status(500).json({
-        success: false,
-        error: error.message || 'Failed to conduct innovation workshop'
-      });
-    }
-  }
-
-  async designABTest(req, res) {
-    try {
-      const { 
-        currentPerformance, 
-        hypothesis, 
-        targetMetrics, 
-        audienceSegments, 
-        testPeriod 
-      } = req.body;
-
-      const testDesign = await geminiService.designABTest({
-        currentPerformance: currentPerformance || {},
-        hypothesis: hypothesis || 'Test different content approaches',
-        targetMetrics: targetMetrics || ['CTR', 'conversion', 'satisfaction'],
-        audienceSegments: audienceSegments || ['new_users', 'returning_users'],
-        testPeriod: testPeriod || '2_weeks'
-      });
-
-      const parsedTestDesign = JSON.parse(testDesign);
-
-      // Save test design
-      const { data: savedTest } = await supabase
-        .from('ab_test_designs')
-        .insert({
-          test_design: parsedTestDesign,
-          hypothesis,
-          target_metrics: targetMetrics,
-          status: 'designed',
-          created_by: req.user?.id
-        })
-        .select()
-        .single();
-
-      res.json({
-        success: true,
-        data: {
-          testDesign: parsedTestDesign,
-          testId: savedTest?.id
-        }
-      });
-    } catch (error) {
-      console.error('Error designing A/B test:', error);
-      res.status(500).json({
-        success: false,
-        error: error.message || 'Failed to design A/B test'
-      });
-    }
-  }
-
-  async generateBreakthroughIdeas(req, res) {
-    try {
-      const { 
-        emergingTech, 
-        culturalTrends, 
-        behaviorShifts, 
-        globalTrends, 
-        generationalData 
-      } = req.body;
-
-      const breakthroughIdeas = await geminiService.generateBreakthroughIdeas({
-        emergingTech: emergingTech || ['AI/ML', 'AR/VR', 'IoT', 'Blockchain'],
-        culturalTrends: culturalTrends || ['Digital spirituality', 'Wellness integration'],
-        behaviorShifts: behaviorShifts || ['Mobile-first', 'Micro-moments', 'Community-focused'],
-        globalTrends: globalTrends || ['Mindfulness', 'Personalization', 'Sustainability'],
-        generationalData: generationalData || {}
-      });
-
-      const parsedIdeas = JSON.parse(breakthroughIdeas);
-
-      // Save breakthrough ideas
-      const { data: savedIdeas } = await supabase
-        .from('breakthrough_ideas')
-        .insert({
-          ideas_data: parsedIdeas,
-          innovation_parameters: { emergingTech, culturalTrends, behaviorShifts, globalTrends, generationalData },
-          created_by: req.user?.id
-        })
-        .select()
-        .single();
-
-      res.json({
-        success: true,
-        data: {
-          ideas: parsedIdeas,
-          ideasId: savedIdeas?.id
-        }
-      });
-    } catch (error) {
-      console.error('Error generating breakthrough ideas:', error);
-      res.status(500).json({
-        success: false,
-        error: error.message || 'Failed to generate breakthrough ideas'
-      });
-    }
-  }
-
-  async designRapidPrototype(req, res) {
-    try {
-      const { 
-        conceptDetails, 
-        resources, 
-        timeline, 
-        successMetrics, 
-        riskLevel 
-      } = req.body;
-
-      if (!conceptDetails) {
-        return res.status(400).json({
-          success: false,
-          error: 'Concept details are required for prototyping'
-        });
-      }
-
-      const prototypeDesign = await geminiService.designRapidPrototype({
-        conceptDetails,
-        resources: resources || ['limited_budget', 'small_team', 'basic_tools'],
-        timeline: timeline || '2_weeks',
-        successMetrics: successMetrics || ['user_feedback', 'engagement', 'feasibility'],
-        riskLevel: riskLevel || 'medium'
-      });
-
-      const parsedDesign = JSON.parse(prototypeDesign);
-
-      // Save prototype design
-      const { data: savedPrototype } = await supabase
-        .from('prototype_designs')
-        .insert({
-          concept_details: conceptDetails,
-          prototype_plan: parsedDesign,
-          timeline,
-          risk_level: riskLevel,
-          status: 'planned',
-          created_by: req.user?.id
-        })
-        .select()
-        .single();
-
-      res.json({
-        success: true,
-        data: {
-          prototypeDesign: parsedDesign,
-          prototypeId: savedPrototype?.id
-        }
-      });
-    } catch (error) {
-      console.error('Error designing rapid prototype:', error);
-      res.status(500).json({
-        success: false,
-        error: error.message || 'Failed to design rapid prototype'
-      });
-    }
+  // Enhanced proposition generator
+  generateEnhancedProposition(dateInfo, focusTheme) {
+    const { date, deity, useCase, tithi, grahaTransit } = dateInfo;
+    
+    // Enhanced rationale generation based on inputs
+    const deityWisdom = {
+      'Ganesha': 'Lord Ganesha, the remover of obstacles and lord of beginnings, is particularly powerful for new ventures and overcoming challenges.',
+      'Lakshmi': 'Goddess Lakshmi, the divine source of wealth and prosperity, blesses devotees with abundance and fortune.',
+      'Saraswati': 'Goddess Saraswati, the embodiment of knowledge and wisdom, enhances learning and creative abilities.',
+      'Shiva': 'Lord Shiva, the supreme consciousness and destroyer of ignorance, grants spiritual transformation and inner peace.',
+      'Durga': 'Goddess Durga, the divine mother and protector, provides strength and protection from negative forces.'
+    };
+
+    const useCaseContext = {
+      'Health & Wellness': 'focusing on physical vitality, mental clarity, and overall well-being through divine intervention',
+      'Career Growth': 'channeling divine energy to remove career obstacles and attract professional opportunities',
+      'Financial Prosperity': 'invoking divine blessings for wealth creation and financial stability',
+      'Relationship Harmony': 'seeking divine grace for love, understanding, and harmonious relationships',
+      'Spiritual Progress': 'deepening spiritual connection and advancing on the path of self-realization'
+    };
+
+    const rationale = `This specially curated ${deity} puja for ${useCase.toLowerCase()} is designed with profound spiritual significance. ${deityWisdom[deity] || `${deity} is revered for divine blessings and spiritual protection.`} 
+
+The timing on ${date}${tithi ? ` during ${tithi}` : ''} is particularly auspicious as per Vedic traditions. ${grahaTransit ? `The current planetary alignment (${grahaTransit}) enhances the spiritual potency of this ritual.` : 'The celestial energies during this period are highly favorable for spiritual practices.'}
+
+This puja incorporates ${useCaseContext[useCase] || 'seeking divine blessings for positive transformation'}. The ritual includes specific mantras, offerings, and meditation practices that have been used for centuries to invoke divine grace.
+
+${focusTheme ? `Aligned with the monthly theme of "${focusTheme}", this puja ` : 'This puja '}creates a powerful spiritual environment where devotees can connect with divine consciousness and manifest their spiritual intentions. The combination of proper timing, traditional rituals, and sincere devotion amplifies the transformative power of this sacred practice.`;
+
+    return {
+      pujaName: `${deity} ${useCase} Puja`,
+      deity: deity,
+      useCase: useCase,
+      date: date,
+      tithi: tithi || '',
+      grahaTransit: grahaTransit || '',
+      specificity: `Traditional ${deity} worship with specialized mantras, authentic offerings (flowers, fruits, incense), and guided meditation for ${useCase.toLowerCase()}. Includes personalized sankalpa (intention setting) and prasadam distribution.`,
+      rationale: rationale,
+      taglines: [
+        `Invoke ${deity}'s Divine Blessings`,
+        `Transform Your Life Through ${useCase}`,
+        'Ancient Wisdom for Modern Challenges',
+        `Experience ${deity}'s Grace`,
+        'Sacred Rituals, Powerful Results'
+      ]
+    };
   }
 
   // Utility method for robust JSON parsing
   parseAIResponse(aiResponse, fallbackData = null) {
     try {
+      console.log('Raw AI Response:', aiResponse);
+      
       // If it's already an object, return it
-      if (typeof aiResponse === 'object') {
+      if (typeof aiResponse === 'object' && aiResponse !== null) {
         return aiResponse;
       }
 
@@ -1891,89 +992,100 @@ ${focusTheme ? `Aligned with the monthly theme of "${focusTheme}", this puja ` :
         let cleaned = aiResponse.replace(/```json\s*/g, '').replace(/```\s*$/g, '');
         cleaned = cleaned.trim();
         
-        // Try to find JSON content between { and }
-        const jsonMatch = cleaned.match(/\{[\s\S]*\}/);
-        if (jsonMatch) {
-          cleaned = jsonMatch[0];
-        }
+        // Try to parse the cleaned response
+        const parsed = JSON.parse(cleaned);
+        console.log('Parsed AI Response:', parsed);
         
-        return JSON.parse(cleaned);
+        return parsed;
       }
 
       throw new Error('Invalid AI response format');
     } catch (parseError) {
       console.warn('Failed to parse AI response:', parseError.message);
-      console.log('Raw response:', aiResponse);
+      console.log('Attempting to extract JSON...');
       
-      // Return fallback data if provided
-      if (fallbackData) {
-        return fallbackData;
-      }
-      
-      // Return a generic fallback
-      return {
-        error: 'Failed to parse AI response',
-        rawResponse: aiResponse,
-        fallbackUsed: true
-      };
-    }
-  }
-
-  // Utility methods for advanced features
-  getSeason(month) {
-    if (month >= 3 && month <= 5) return 'spring';
-    if (month >= 6 && month <= 8) return 'summer';
-    if (month >= 9 && month <= 11) return 'autumn';
-    return 'winter';
-  }
-
-  getWeatherContext(month) {
-    const weatherContext = {
-      1: 'Winter - Cold, dry weather, indoor activities preferred',
-      2: 'Late winter - Transition period, moderate temperatures',
-      3: 'Spring - Pleasant weather, renewal energy',
-      4: 'Spring - Warm, energetic period',
-      5: 'Late spring - Hot weather beginning',
-      6: 'Summer - Hot, monsoon preparation',
-      7: 'Monsoon - Rainy season, indoor focus',
-      8: 'Monsoon - Heavy rains, contemplative period',
-      9: 'Post-monsoon - Fresh, celebratory mood',
-      10: 'Autumn - Festival season, high energy',
-      11: 'Post-monsoon - Clear skies, celebration time',
-      12: 'Early winter - Cool, reflective period'
-    };
-
-    return weatherContext[month] || 'Moderate weather conditions';
-  }
-
-  extractFeedbackThemes(feedbackData) {
-    if (!feedbackData || feedbackData.length === 0) {
-      return ['Limited feedback available'];
-    }
-
-    // Simple theme extraction from feedback
-    const themes = [];
-    const keywords = {
-      'ease_of_use': ['easy', 'simple', 'convenient'],
-      'authenticity': ['authentic', 'traditional', 'genuine'],
-      'effectiveness': ['effective', 'powerful', 'results'],
-      'timing': ['timing', 'schedule', 'when'],
-      'personalization': ['personal', 'customized', 'specific']
-    };
-
-    feedbackData.forEach(feedback => {
-      const text = (feedback.user_feedback || '' + feedback.learnings || '').toLowerCase();
-      
-      Object.entries(keywords).forEach(([theme, words]) => {
-        if (words.some(word => text.includes(word))) {
-          if (!themes.includes(theme)) {
-            themes.push(theme);
-          }
+      try {
+        // Try to find JSON content in the string
+        const jsonMatch = aiResponse.match(/\{[\s\S]*\}/);
+        if (jsonMatch) {
+          const extracted = JSON.parse(jsonMatch[0]);
+          console.log('Extracted JSON:', extracted);
+          return extracted;
         }
-      });
-    });
+        
+        throw new Error('No JSON found in response');
+      } catch (extractError) {
+        console.warn('JSON extraction failed:', extractError.message);
+        
+        // Return fallback data if provided, otherwise return a structured error response
+        if (fallbackData) {
+          return {
+            ...fallbackData,
+            error: 'AI parsing failed, using fallback data',
+            rawResponse: aiResponse
+          };
+        }
+        
+        return {
+          error: 'Failed to parse AI response',
+          rawResponse: aiResponse,
+          fallbackUsed: true
+        };
+      }
+    }
+  }
 
-    return themes.length > 0 ? themes : ['General satisfaction', 'Content quality', 'User experience'];
+  // Helper methods to extract data from AI response
+  extractDeitiesFromResponse(strategy) {
+    const deities = [];
+    
+    // Extract from deity combinations
+    if (strategy.recommendations?.high_performing_deity_combinations) {
+      strategy.recommendations.high_performing_deity_combinations.forEach(combo => {
+        const deityNames = combo.deity_combination.split('&').map(d => d.trim());
+        deities.push(...deityNames);
+      });
+    }
+    
+    // Extract from categories
+    if (strategy.recommendations?.top_3_puja_categories) {
+      strategy.recommendations.top_3_puja_categories.forEach(cat => {
+        if (cat.category.includes('Shiva')) deities.push('Shiva');
+        if (cat.category.includes('Lakshmi')) deities.push('Lakshmi');
+        if (cat.category.includes('Krishna')) deities.push('Krishna');
+        if (cat.category.includes('Ganesha')) deities.push('Ganesha');
+        if (cat.category.includes('Radha')) deities.push('Radha');
+        if (cat.category.includes('Parvati')) deities.push('Parvati');
+        if (cat.category.includes('Kubera')) deities.push('Kubera');
+      });
+    }
+    
+    // Remove duplicates and return
+    return [...new Set(deities)].slice(0, 5);
+  }
+
+  extractOptimalTiming(strategy) {
+    if (strategy.recommendations?.optimal_timing_strategies?.length > 0) {
+      const timings = strategy.recommendations.optimal_timing_strategies
+        .map(t => t.timing)
+        .join(', ');
+      return `Recommended timing: ${timings}`;
+    }
+    return 'Early morning hours (6 AM - 8 AM) are traditionally most auspicious';
+  }
+
+  extractCulturalSignificance(strategy, month) {
+    const monthNames = ['', 'January', 'February', 'March', 'April', 'May', 'June',
+      'July', 'August', 'September', 'October', 'November', 'December'];
+    
+    if (strategy.recommendations?.recommended_themes?.length > 0) {
+      const themes = strategy.recommendations.recommended_themes
+        .map(t => t.theme)
+        .join(', ');
+      return `${monthNames[month]} is significant for: ${themes}`;
+    }
+    
+    return `${monthNames[month]} offers unique spiritual opportunities based on traditional calendar and seasonal energies`;
   }
 }
 
