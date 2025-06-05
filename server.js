@@ -33,15 +33,6 @@ const limiter = rateLimit({
 });
 app.use(limiter);
 
-// CORS configuration
-const corsOptions = {
-  origin: process.env.NODE_ENV === 'production' 
-    ? ['https://panchang-be.onrender.com'] 
-    : ['http://localhost:3000', 'http://127.0.0.1:3000'],
-  credentials: true,
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With']
-};
 app.use(cors({
   origin: true, // Allow all origins
   credentials: true,
@@ -76,6 +67,21 @@ app.use('/api/puja', pujaRoutes);
 app.use('/api/feedback', feedbackRoutes);
 app.use('/api/analytics', analyticsRoutes);
 app.use('/api/dashboard', dashboardRoutes);
+
+
+// Update server.js to include new routes
+// Add these lines to server.js after existing route imports:
+
+
+const teamReviewRoutes = require('./routes/teamReview');
+const performanceRoutes = require('./routes/performance');
+const learningRoutes = require('./routes/learning');
+
+// Add after existing API routes:
+app.use('/api/team-review', teamReviewRoutes);
+app.use('/api/performance', performanceRoutes);
+app.use('/api/learning', learningRoutes);
+
 
 // Health check endpoint
 app.get('/health', (req, res) => {

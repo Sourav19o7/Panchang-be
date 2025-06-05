@@ -41,31 +41,31 @@ router.get('/panchang/date', pujaController.getPanchangForDate);
 router.post('/propositions/generate', pujaController.generatePropositions);
 router.post('/propositions/experimental', pujaController.generateExperimentalPujas);
 router.get('/propositions/history', pujaController.getHistoricalPropositions);
-// router.get('/propositions/search', pujaController.searchPropositions);
-// router.get('/propositions/category/:category', pujaController.getPropositionsByCategory);
-// router.put('/propositions/:id/status', requireEditor, pujaController.updatePropositionStatus);
-// router.delete('/propositions/:id', requireAdmin, pujaController.deleteProposition);
-// router.post('/propositions/:id/clone', pujaController.cloneProposition);
-// router.post('/propositions/:id/variations', pujaController.generatePropositionVariations);
-// router.post('/propositions/bulk-update', requireEditor, pujaController.bulkUpdatePropositions);
+router.get('/propositions/search', pujaController.searchPropositions);
+router.get('/propositions/category/:category', pujaController.getPropositionsByCategory);
+router.put('/propositions/:id/status', requireEditor, pujaController.updatePropositionStatus);
+router.delete('/propositions/:id', requireAdmin, pujaController.deleteProposition);
+router.post('/propositions/:id/clone', pujaController.cloneProposition);
+router.post('/propositions/:id/variations', pujaController.generatePropositionVariations);
+router.post('/propositions/bulk-update', requireEditor, pujaController.bulkUpdatePropositions);
 
 // Advanced analysis routes with professional prompts
-// router.post('/analysis/why-why', pujaController.generateWhyWhyAnalysis);
-// router.post('/analysis/performance', pujaController.analyzePerformance);
-// router.post('/analysis/competitive', pujaController.performCompetitiveAnalysis);
-// router.post('/analysis/seasonal', pujaController.optimizeSeasonalStrategy);
+router.post('/analysis/why-why', pujaController.generateWhyWhyAnalysis);
+router.post('/analysis/performance', pujaController.analyzePerformance);
+router.post('/analysis/competitive', pujaController.performCompetitiveAnalysis);
+router.post('/analysis/seasonal', pujaController.optimizeSeasonalStrategy);
 
 // Advanced experimental routes
-// router.post('/experiments/innovation-workshop', pujaController.conductInnovationWorkshop);
-// router.post('/experiments/ab-test-design', pujaController.designABTest);
-// router.post('/experiments/breakthrough-ideas', pujaController.generateBreakthroughIdeas);
-// router.post('/experiments/rapid-prototype', pujaController.designRapidPrototype);
+router.post('/experiments/innovation-workshop', pujaController.conductInnovationWorkshop);
+router.post('/experiments/ab-test-design', pujaController.designABTest);
+router.post('/experiments/breakthrough-ideas', pujaController.generateBreakthroughIdeas);
+router.post('/experiments/rapid-prototype', pujaController.designRapidPrototype);
 
 // Statistics and reporting
 router.get('/statistics', pujaController.getPujaStatistics);
 
 // Seasonal and cultural data
-// router.get('/seasonal-events', pujaController.getSeasonalEvents);
+router.get('/seasonal-events', pujaController.getSeasonalEvents);
 
 // Basic test route
 router.get('/test', (req, res) => {
