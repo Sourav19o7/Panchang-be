@@ -283,120 +283,325 @@ class PujaController {
     }
   }
 
-  // Generate monthly Panchang data
-  async generateMonthlyPanchang(req, res) {
+// Updated generateMonthlyPanchang method for pujaController.js
+
+async generateMonthlyPanchang(req, res) {
+  try {
     console.log("reached here")
-    try {
-      const { month, year, location = 'delhi' } = req.body;
+    const { month, year, location = 'delhi' } = req.body;
 
-      if (!month || !year) {
-        return res.status(400).json({
-          success: false,
-          error: 'Month and year are required'
-        });
-      }
+    if (!month || !year) {
+      return res.status(400).json({
+        success: false,
+        error: 'Month and year are required'
+      });
+    }
 
-      // Check if we already have this data
-      const { data: existingData } = await supabase
-        .from('panchang_data')
-        .select('*')
-        .eq('month', parseInt(month))
-        .eq('year', parseInt(year))
-        .eq('location', location)
-        .single();
+    // Validate month and year
+    const monthNum = parseInt(month);
+    const yearNum = parseInt(year);
+    
+    if (monthNum < 1 || monthNum > 12) {
+      return res.status(400).json({
+        success: false,
+        error: 'Month must be between 1 and 12'
+      });
+    }
 
-      if (existingData) {
+    if (yearNum < 1900 || yearNum > 2100) {
+      return res.status(400).json({
+        success: false,
+        error: 'Year must be between 1900 and 2100'
+      });
+    }
+
+    // Check if we already have this data in cache
+    const { data: existingData } = await supabase
+      .from('panchang_data')
+      .select('*')
+      .eq('month', monthNum)
+      .eq('year', yearNum)
+      .eq('location', location.toLowerCase())
+      .single();
+
+    if (existingData && existingData.data) {
+      // Check if cached data is recent (less than 30 days old)
+      const cacheAge = Date.now() - new Date(existingData.created_at).getTime();
+      const thirtyDaysMs = 30 * 24 * 60 * 60 * 1000;
+      
+      if (cacheAge < thirtyDaysMs) {
         return res.json({
           success: true,
           data: existingData.data,
           panchangId: existingData.id,
-          cached: true
+          cached: true,
+          cacheAge: Math.floor(cacheAge / (24 * 60 * 60 * 1000)), // days
+          message: 'Retrieved from cache',
+          dataSource: existingData.data.dataSource || 'Free Astrology API'
         });
       }
+    }
 
-      // Generate new Panchang data
-      let panchangData;
-      try {
-        panchangData = await panchangService.getMonthlyPanchang(
-          parseInt(year), 
-          parseInt(month), 
-          location
-        );
-      } catch (panchangError) {
-        console.warn('Panchang service unavailable, using mock data:', panchangError.message);
-        
-        // Generate structured mock data based on real requirements
-        const daysInMonth = new Date(year, month, 0).getDate();
-        const mockData = [];
-        const tithis = ['Pratipada', 'Dwitiya', 'Tritiya', 'Chaturthi', 'Panchami', 'Shashthi', 'Saptami', 'Ashtami', 'Navami', 'Dashami', 'Ekadashi', 'Dwadashi', 'Trayodashi', 'Chaturdashi', 'Purnima', 'Amavasya'];
-        const nakshatras = ['Ashwini', 'Bharani', 'Krittika', 'Rohini', 'Mrigashira', 'Ardra', 'Punarvasu', 'Pushya', 'Ashlesha', 'Magha'];
-        
-        for (let day = 1; day <= daysInMonth; day++) {
-          const date = new Date(year, month - 1, day);
-          mockData.push({
-            date: date.toISOString().split('T')[0],
-            tithi: tithis[day % tithis.length],
-            nakshatra: nakshatras[day % nakshatras.length],
-            yog: 'Vishkumbha',
-            karan: 'Bava',
-            sunrise: '06:30 AM',
-            sunset: '06:30 PM',
-            grahaTransits: [{
-              planet: 'Jupiter',
-              sign: 'Taurus',
-              degree: '15°'
-            }],
-            auspiciousTimes: [{
-              name: 'Abhijit Muhurat',
-              time: '11:45 AM - 12:30 PM',
-              duration: '45 minutes'
-            }],
-            festivals: day % 15 === 0 ? ['Festival Day'] : [],
-            vrat: day % 11 === 0 ? ['Ekadashi Vrat'] : []
-          });
-        }
+    // Check API availability first
+    console.log('Checking Panchang API availability...');
+    const apiStatus = await panchangService.checkAPIStatus();
+    
+    if (apiStatus.status === 'unavailable') {
+      return res.status(503).json({
+        success: false,
+        error: 'Panchang API is currently unavailable',
+        details: apiStatus.message,
+        suggestions: [
+          'Check your API key in environment variables',
+          'Verify your internet connection',
+          'Try again in a few minutes',
+          'Contact support if the issue persists'
+        ]
+      });
+    }
 
-        panchangData = {
-          year: parseInt(year),
-          month: parseInt(month),
-          location,
-          data: mockData,
-          summary: {
-            totalDays: mockData.length,
-            festivals: mockData.filter(d => d.festivals.length > 0).length,
-            auspiciousDates: mockData.filter(d => d.auspiciousTimes.length > 0).length,
-            majorTithis: {},
-            note: 'Mock data generated - Panchang service unavailable'
-          }
-        };
+    console.log(`Generating fresh Panchang data for ${monthNum}/${yearNum} in ${location}`);
+    
+    // Generate new Panchang data using the API
+    let panchangData;
+    try {
+      panchangData = await panchangService.getMonthlyPanchang(
+        yearNum, 
+        monthNum, 
+        location.toLowerCase()
+      );
+
+      // Validate that we got meaningful data
+      const validData = panchangData.data.filter(day => !day.error);
+      const dataQuality = validData.length / panchangData.data.length;
+      
+      if (validData.length === 0) {
+        throw new Error('No valid Panchang data could be retrieved for any day of the month');
       }
 
-      // Save to database
+      if (dataQuality < 0.5) {
+        console.warn(`Low data quality: Only ${validData.length}/${panchangData.data.length} days have valid data`);
+      }
+
+      console.log(`Successfully generated Panchang data with ${Math.round(dataQuality * 100)}% success rate`);
+
+    } catch (panchangError) {
+      console.error('Panchang API failed:', panchangError.message);
+      
+      // Check if we have cached data as fallback
+      if (existingData && existingData.data) {
+        console.log('Falling back to cached data due to API failure');
+        return res.json({
+          success: true,
+          data: existingData.data,
+          panchangId: existingData.id,
+          cached: true,
+          fallback: true,
+          warning: 'Using cached data due to API unavailability',
+          apiError: panchangError.message,
+          cacheAge: Math.floor((Date.now() - new Date(existingData.created_at).getTime()) / (24 * 60 * 60 * 1000))
+        });
+      }
+      
+      // No cache available, return error
+      return res.status(503).json({
+        success: false,
+        error: 'Panchang API is temporarily unavailable',
+        details: panchangError.message,
+        suggestions: [
+          'Check your PANCHANG_API_KEY environment variable',
+          'Verify the API service is operational',
+          'Try again in a few minutes',
+          'Check network connectivity'
+        ],
+        troubleshooting: {
+          apiKey: process.env.PANCHANG_API_KEY ? 'Set' : 'Missing',
+          endpoint: 'https://json.freeastrologyapi.com/complete-panchang',
+          parameters: { month: monthNum, year: yearNum, location }
+        }
+      });
+    }
+
+    // Save successful data to database
+    try {
+      const validDaysCount = panchangData.data.filter(day => !day.error).length;
+      const dataQuality = validDaysCount / panchangData.data.length;
+      
       const { data: savedPanchang } = await supabase
         .from('panchang_data')
-        .insert({
-          month: parseInt(month),
-          year: parseInt(year),
-          location,
+        .upsert({
+          month: monthNum,
+          year: yearNum,
+          location: location.toLowerCase(),
           data: panchangData,
-          created_by: req.user?.id
+          created_by: req.user?.id,
+          data_quality: dataQuality,
+          source_status: dataQuality === 1 ? 'complete_success' : 'partial_success',
+          api_calls: panchangData.apiCalls || panchangData.data.length,
+          updated_at: new Date().toISOString()
+        }, {
+          onConflict: 'month,year,location'
         })
         .select()
         .single();
 
+      const response = {
+        success: true,
+        data: panchangData,
+        panchangId: savedPanchang?.id,
+        cached: false,
+        generated: true,
+        dataQuality: {
+          totalDays: panchangData.data.length,
+          validDays: validDaysCount,
+          errorDays: panchangData.data.length - validDaysCount,
+          qualityPercentage: Math.round(dataQuality * 100),
+          apiCalls: panchangData.apiCalls || panchangData.data.length
+        },
+        apiInfo: {
+          source: 'Free Astrology API',
+          endpoint: 'https://json.freeastrologyapi.com/complete-panchang',
+          location: location,
+          coordinates: panchangService.getLocationCoordinates(location)
+        }
+      };
+
+      console.log("Free Panchang", response)
+
+      // Add warnings if data quality is not perfect
+      if (dataQuality < 1) {
+        response.warnings = [
+          `${panchangData.data.length - validDaysCount} days have incomplete data`,
+          'Some API calls may have failed due to rate limits'
+        ];
+      }
+
+      res.json(response);
+
+    } catch (saveError) {
+      console.error('Error saving Panchang data:', saveError);
+      
+      // Return the data even if saving failed
+      const validDaysCount = panchangData.data.filter(day => !day.error).length;
+      const dataQuality = validDaysCount / panchangData.data.length;
+      
       res.json({
         success: true,
         data: panchangData,
-        panchangId: savedPanchang?.id
-      });
-    } catch (error) {
-      console.error('Error generating Panchang data:', error);
-      res.status(500).json({
-        success: false,
-        error: error.message || 'Failed to generate Panchang data'
+        panchangId: null,
+        cached: false,
+        generated: true,
+        warning: 'Data generated successfully but could not be saved to database',
+        saveError: saveError.message,
+        dataQuality: {
+          totalDays: panchangData.data.length,
+          validDays: validDaysCount,
+          errorDays: panchangData.data.length - validDaysCount,
+          qualityPercentage: Math.round(dataQuality * 100)
+        }
       });
     }
+
+  } catch (error) {
+    console.error('Error in generateMonthlyPanchang:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to generate Panchang data',
+      details: error.message,
+      troubleshooting: {
+        checkParameters: 'Ensure month (1-12) and year are valid',
+        checkApiKey: 'Verify PANCHANG_API_KEY is set in environment variables',
+        checkNetwork: 'Verify internet connectivity',
+        retryLater: 'API may be temporarily overloaded'
+      }
+    });
   }
+}
+
+// Also add this method to get Panchang for a single date
+async getPanchangForDate(req, res) {
+  try {
+    const { date, location = 'delhi' } = req.query;
+
+    if (!date) {
+      return res.status(400).json({
+        success: false,
+        error: 'Date is required (format: YYYY-MM-DD)'
+      });
+    }
+
+    // Validate date format
+    const dateObj = new Date(date);
+    if (isNaN(dateObj.getTime())) {
+      return res.status(400).json({
+        success: false,
+        error: 'Invalid date format. Use YYYY-MM-DD'
+      });
+    }
+
+    console.log(`Getting Panchang for ${date} at ${location}`);
+
+    // Try to get from database first
+    const { data: existingData } = await supabase
+      .from('panchang_data')
+      .select('data')
+      .eq('month', dateObj.getMonth() + 1)
+      .eq('year', dateObj.getFullYear())
+      .eq('location', location.toLowerCase())
+      .single();
+
+    if (existingData?.data?.data) {
+      const dayData = existingData.data.data.find(d => 
+        new Date(d.date).toISOString().split('T')[0] === date
+      );
+      
+      if (dayData && !dayData.error) {
+        return res.json({
+          success: true,
+          data: dayData,
+          cached: true,
+          source: 'database'
+        });
+      }
+    }
+
+    // Get fresh data from API
+    try {
+      const panchangData = await panchangService.getPanchangForDate(date, location);
+      
+      res.json({
+        success: true,
+        data: panchangData,
+        cached: false,
+        source: 'api'
+      });
+    } catch (apiError) {
+      console.error('API failed for single date:', apiError.message);
+      
+      // Return error with helpful information
+      res.status(503).json({
+        success: false,
+        error: 'Unable to fetch Panchang data',
+        details: apiError.message,
+        date: date,
+        location: location,
+        suggestions: [
+          'Check if the date is valid',
+          'Try a different location',
+          'Verify your API key',
+          'Try again later'
+        ]
+      });
+    }
+  } catch (error) {
+    console.error('Error getting Panchang for date:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to get Panchang data',
+      details: error.message
+    });
+  }
+}
 
   // Generate puja propositions
   async generatePropositions(req, res) {
@@ -1014,74 +1219,6 @@ class PujaController {
       res.status(500).json({
         success: false,
         error: error.message || 'Failed to get focus suggestion history'
-      });
-    }
-  }
-
-  async getPanchangForDate(req, res) {
-    try {
-      const { date, location = 'delhi' } = req.query;
-
-      if (!date) {
-        return res.status(400).json({
-          success: false,
-          error: 'Date is required'
-        });
-      }
-
-      // Try to get from database first
-      const dateObj = new Date(date);
-      const { data: existingData } = await supabase
-        .from('panchang_data')
-        .select('data')
-        .eq('month', dateObj.getMonth() + 1)
-        .eq('year', dateObj.getFullYear())
-        .eq('location', location)
-        .single();
-
-      if (existingData?.data?.data) {
-        const dayData = existingData.data.data.find(d => 
-          new Date(d.date).toISOString().split('T')[0] === date
-        );
-        
-        if (dayData) {
-          return res.json({
-            success: true,
-            data: dayData,
-            cached: true
-          });
-        }
-      }
-
-      // Generate fresh data
-      try {
-        const panchangData = await panchangService.scrapePanchangData(new Date(date), location);
-        
-        res.json({
-          success: true,
-          data: panchangData
-        });
-      } catch (panchangError) {
-        // Return mock data
-        res.json({
-          success: true,
-          data: {
-            date,
-            tithi: 'Panchami',
-            nakshatra: 'Rohini',
-            yog: 'Siddha',
-            karan: 'Bava',
-            sunrise: '06:30 AM',
-            sunset: '06:30 PM',
-            note: 'Mock data - Panchang service unavailable'
-          }
-        });
-      }
-    } catch (error) {
-      console.error('Error getting Panchang for date:', error);
-      res.status(500).json({
-        success: false,
-        error: error.message || 'Failed to get Panchang data'
       });
     }
   }
