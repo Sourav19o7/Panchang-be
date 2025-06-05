@@ -4,6 +4,163 @@ const sheetsService = require('../services/sheetsService');
 const { pdfService } = require('../services/pdfService');
 const { supabase } = require('../config/database');
 
+function generateEnhancedProposition(dateInfo, focusTheme) {
+  const { date, deity, useCase, tithi, grahaTransit } = dateInfo;
+  
+  // Enhanced rationale generation based on inputs
+  const deityWisdom = {
+    'Ganesha': 'Lord Ganesha, the remover of obstacles and lord of beginnings, is particularly powerful for new ventures and overcoming challenges.',
+    'Lakshmi': 'Goddess Lakshmi, the divine source of wealth and prosperity, blesses devotees with abundance and fortune.',
+    'Saraswati': 'Goddess Saraswati, the embodiment of knowledge and wisdom, enhances learning and creative abilities.',
+    'Shiva': 'Lord Shiva, the supreme consciousness and destroyer of ignorance, grants spiritual transformation and inner peace.',
+    'Durga': 'Goddess Durga, the divine mother and protector, provides strength and protection from negative forces.'
+  };
+
+  const useCaseContext = {
+    'Health & Wellness': 'focusing on physical vitality, mental clarity, and overall well-being through divine intervention',
+    'Career Growth': 'channeling divine energy to remove career obstacles and attract professional opportunities',
+    'Financial Prosperity': 'invoking divine blessings for wealth creation and financial stability',
+    'Relationship Harmony': 'seeking divine grace for love, understanding, and harmonious relationships',
+    'Spiritual Progress': 'deepening spiritual connection and advancing on the path of self-realization'
+  };
+
+  const rationale = `This specially curated ${deity} puja for ${useCase.toLowerCase()} is designed with profound spiritual significance. ${deityWisdom[deity] || `${deity} is revered for divine blessings and spiritual protection.`} 
+
+The timing on ${date}${tithi ? ` during ${tithi}` : ''} is particularly auspicious as per Vedic traditions. ${grahaTransit ? `The current planetary alignment (${grahaTransit}) enhances the spiritual potency of this ritual.` : 'The celestial energies during this period are highly favorable for spiritual practices.'}
+
+This puja incorporates ${useCaseContext[useCase] || 'seeking divine blessings for positive transformation'}. The ritual includes specific mantras, offerings, and meditation practices that have been used for centuries to invoke divine grace.
+
+${focusTheme ? `Aligned with the monthly theme of "${focusTheme}", this puja ` : 'This puja '}creates a powerful spiritual environment where devotees can connect with divine consciousness and manifest their spiritual intentions. The combination of proper timing, traditional rituals, and sincere devotion amplifies the transformative power of this sacred practice.`;
+
+  return {
+    pujaName: `${deity} ${useCase} Puja`,
+    deity: deity,
+    useCase: useCase,
+    date: date,
+    tithi: tithi || '',
+    grahaTransit: grahaTransit || '',
+    specificity: `Traditional ${deity} worship with specialized mantras, authentic offerings (flowers, fruits, incense), and guided meditation for ${useCase.toLowerCase()}. Includes personalized sankalpa (intention setting) and prasadam distribution.`,
+    rationale: rationale,
+    taglines: [
+      `Invoke ${deity}'s Divine Blessings`,
+      `Transform Your Life Through ${useCase}`,
+      'Ancient Wisdom for Modern Challenges',
+      `Experience ${deity}'s Grace`,
+      'Sacred Rituals, Powerful Results'
+    ]
+  };
+  }
+
+// Helper functions for extracting data from AI responses
+function extractDeitiesFromResponse(strategy) {
+  const deities = [];
+  
+  // Extract from deity combinations
+  if (strategy.recommendations?.high_performing_deity_combinations) {
+    strategy.recommendations.high_performing_deity_combinations.forEach(combo => {
+      const deityNames = combo.deity_combination.split('&').map(d => d.trim());
+      deities.push(...deityNames);
+    });
+  }
+  
+  // Extract from categories
+  if (strategy.recommendations?.top_3_puja_categories) {
+    strategy.recommendations.top_3_puja_categories.forEach(cat => {
+      if (cat.category.includes('Shiva')) deities.push('Shiva');
+      if (cat.category.includes('Lakshmi')) deities.push('Lakshmi');
+      if (cat.category.includes('Krishna')) deities.push('Krishna');
+      if (cat.category.includes('Ganesha')) deities.push('Ganesha');
+      if (cat.category.includes('Radha')) deities.push('Radha');
+      if (cat.category.includes('Parvati')) deities.push('Parvati');
+      if (cat.category.includes('Kubera')) deities.push('Kubera');
+    });
+  }
+  
+  // Remove duplicates and return
+  return [...new Set(deities)].slice(0, 5);
+}
+
+function extractOptimalTiming(strategy) {
+  if (strategy.recommendations?.optimal_timing_strategies?.length > 0) {
+    const timings = strategy.recommendations.optimal_timing_strategies
+      .map(t => t.timing)
+      .join(', ');
+    return `Recommended timing: ${timings}`;
+  }
+  return 'Early morning hours (6 AM - 8 AM) are traditionally most auspicious';
+}
+
+function extractCulturalSignificance(strategy, month) {
+  const monthNames = ['', 'January', 'February', 'March', 'April', 'May', 'June',
+    'July', 'August', 'September', 'October', 'November', 'December'];
+  
+  if (strategy.recommendations?.recommended_themes?.length > 0) {
+    const themes = strategy.recommendations.recommended_themes
+      .map(t => t.theme)
+      .join(', ');
+    return `${monthNames[month]} is significant for: ${themes}`;
+  }
+  
+  return `${monthNames[month]} offers unique spiritual opportunities based on traditional calendar and seasonal energies`;
+}
+function parseAIResponse(aiResponse, fallbackData = null) {
+  try {
+    console.log('Raw AI Response:', aiResponse);
+    
+    // If it's already an object, return it
+    if (typeof aiResponse === 'object' && aiResponse !== null) {
+      return aiResponse;
+    }
+
+    // If it's a string, try to parse it
+    if (typeof aiResponse === 'string') {
+      // Remove markdown code blocks if present
+      let cleaned = aiResponse.replace(/```json\s*/g, '').replace(/```\s*$/g, '');
+      cleaned = cleaned.trim();
+      
+      // Try to parse the cleaned response
+      const parsed = JSON.parse(cleaned);
+      console.log('Parsed AI Response:', parsed);
+      
+      return parsed;
+    }
+
+    throw new Error('Invalid AI response format');
+  } catch (parseError) {
+    console.warn('Failed to parse AI response:', parseError.message);
+    console.log('Attempting to extract JSON...');
+    
+    try {
+      // Try to find JSON content in the string
+      const jsonMatch = aiResponse.match(/\{[\s\S]*\}/);
+      if (jsonMatch) {
+        const extracted = JSON.parse(jsonMatch[0]);
+        console.log('Extracted JSON:', extracted);
+        return extracted;
+      }
+      
+      throw new Error('No JSON found in response');
+    } catch (extractError) {
+      console.warn('JSON extraction failed:', extractError.message);
+      
+      // Return fallback data if provided, otherwise return a structured error response
+      if (fallbackData) {
+        return {
+          ...fallbackData,
+          error: 'AI parsing failed, using fallback data',
+          rawResponse: aiResponse
+        };
+      }
+      
+      return {
+        error: 'Failed to parse AI response',
+        rawResponse: aiResponse,
+        fallbackUsed: true
+      };
+    }
+  }
+}
+
 class PujaController {
   // Generate focus suggestions for the month
   async generateFocusSuggestion(req, res) {
@@ -44,7 +201,7 @@ class PujaController {
       console.log("Raw AI Suggestions:", suggestions);
       
       // Parse the suggestions with better error handling
-      const parsedSuggestions = this.parseAIResponse(suggestions);
+      const parsedSuggestions = parseAIResponse(suggestions);
       
       console.log("Parsed Suggestions:", parsedSuggestions);
 
@@ -56,9 +213,9 @@ class PujaController {
         const strategy = parsedSuggestions.puja_strategy;
         formattedSuggestions = {
           focusThemes: strategy.recommendations?.recommended_themes?.map(t => t.theme) || [],
-          recommendedDeities: this.extractDeitiesFromResponse(strategy),
-          optimalTiming: this.extractOptimalTiming(strategy),
-          culturalSignificance: this.extractCulturalSignificance(strategy, month),
+          recommendedDeities: extractDeitiesFromResponse(strategy),
+          optimalTiming: extractOptimalTiming(strategy),
+          culturalSignificance: extractCulturalSignificance(strategy, month),
           topCategories: strategy.recommendations?.top_3_puja_categories?.map(cat => ({
             category: cat.category,
             performance: 'High',
@@ -312,14 +469,14 @@ class PujaController {
           );
 
           // Parse with better error handling
-          proposition = this.parseAIResponse(aiResponse);
+          proposition = parseAIResponse(aiResponse);
           
           if (proposition.error) {
-            proposition = this.generateEnhancedProposition(dateInfo, focusTheme);
+            proposition = generateEnhancedProposition(dateInfo, focusTheme);
           }
         } catch (aiError) {
           console.warn('AI generation failed, using enhanced template:', aiError.message);
-          proposition = this.generateEnhancedProposition(dateInfo, focusTheme);
+          proposition = generateEnhancedProposition(dateInfo, focusTheme);
         }
 
         // Save proposition to database
@@ -400,7 +557,7 @@ class PujaController {
           experimentParameters
         }, pdfFiles || []);
 
-        experiments = this.parseAIResponse(experiments);
+        experiments = parseAIResponse(experiments);
         
         if (experiments.error) {
           throw new Error('AI generation failed');
@@ -928,165 +1085,7 @@ class PujaController {
     }
   }
 
-  // Enhanced proposition generator
-  generateEnhancedProposition(dateInfo, focusTheme) {
-    const { date, deity, useCase, tithi, grahaTransit } = dateInfo;
-    
-    // Enhanced rationale generation based on inputs
-    const deityWisdom = {
-      'Ganesha': 'Lord Ganesha, the remover of obstacles and lord of beginnings, is particularly powerful for new ventures and overcoming challenges.',
-      'Lakshmi': 'Goddess Lakshmi, the divine source of wealth and prosperity, blesses devotees with abundance and fortune.',
-      'Saraswati': 'Goddess Saraswati, the embodiment of knowledge and wisdom, enhances learning and creative abilities.',
-      'Shiva': 'Lord Shiva, the supreme consciousness and destroyer of ignorance, grants spiritual transformation and inner peace.',
-      'Durga': 'Goddess Durga, the divine mother and protector, provides strength and protection from negative forces.'
-    };
-
-    const useCaseContext = {
-      'Health & Wellness': 'focusing on physical vitality, mental clarity, and overall well-being through divine intervention',
-      'Career Growth': 'channeling divine energy to remove career obstacles and attract professional opportunities',
-      'Financial Prosperity': 'invoking divine blessings for wealth creation and financial stability',
-      'Relationship Harmony': 'seeking divine grace for love, understanding, and harmonious relationships',
-      'Spiritual Progress': 'deepening spiritual connection and advancing on the path of self-realization'
-    };
-
-    const rationale = `This specially curated ${deity} puja for ${useCase.toLowerCase()} is designed with profound spiritual significance. ${deityWisdom[deity] || `${deity} is revered for divine blessings and spiritual protection.`} 
-
-The timing on ${date}${tithi ? ` during ${tithi}` : ''} is particularly auspicious as per Vedic traditions. ${grahaTransit ? `The current planetary alignment (${grahaTransit}) enhances the spiritual potency of this ritual.` : 'The celestial energies during this period are highly favorable for spiritual practices.'}
-
-This puja incorporates ${useCaseContext[useCase] || 'seeking divine blessings for positive transformation'}. The ritual includes specific mantras, offerings, and meditation practices that have been used for centuries to invoke divine grace.
-
-${focusTheme ? `Aligned with the monthly theme of "${focusTheme}", this puja ` : 'This puja '}creates a powerful spiritual environment where devotees can connect with divine consciousness and manifest their spiritual intentions. The combination of proper timing, traditional rituals, and sincere devotion amplifies the transformative power of this sacred practice.`;
-
-    return {
-      pujaName: `${deity} ${useCase} Puja`,
-      deity: deity,
-      useCase: useCase,
-      date: date,
-      tithi: tithi || '',
-      grahaTransit: grahaTransit || '',
-      specificity: `Traditional ${deity} worship with specialized mantras, authentic offerings (flowers, fruits, incense), and guided meditation for ${useCase.toLowerCase()}. Includes personalized sankalpa (intention setting) and prasadam distribution.`,
-      rationale: rationale,
-      taglines: [
-        `Invoke ${deity}'s Divine Blessings`,
-        `Transform Your Life Through ${useCase}`,
-        'Ancient Wisdom for Modern Challenges',
-        `Experience ${deity}'s Grace`,
-        'Sacred Rituals, Powerful Results'
-      ]
-    };
-  }
-
-  // Utility method for robust JSON parsing
-  parseAIResponse(aiResponse, fallbackData = null) {
-    try {
-      console.log('Raw AI Response:', aiResponse);
-      
-      // If it's already an object, return it
-      if (typeof aiResponse === 'object' && aiResponse !== null) {
-        return aiResponse;
-      }
-
-      // If it's a string, try to parse it
-      if (typeof aiResponse === 'string') {
-        // Remove markdown code blocks if present
-        let cleaned = aiResponse.replace(/```json\s*/g, '').replace(/```\s*$/g, '');
-        cleaned = cleaned.trim();
-        
-        // Try to parse the cleaned response
-        const parsed = JSON.parse(cleaned);
-        console.log('Parsed AI Response:', parsed);
-        
-        return parsed;
-      }
-
-      throw new Error('Invalid AI response format');
-    } catch (parseError) {
-      console.warn('Failed to parse AI response:', parseError.message);
-      console.log('Attempting to extract JSON...');
-      
-      try {
-        // Try to find JSON content in the string
-        const jsonMatch = aiResponse.match(/\{[\s\S]*\}/);
-        if (jsonMatch) {
-          const extracted = JSON.parse(jsonMatch[0]);
-          console.log('Extracted JSON:', extracted);
-          return extracted;
-        }
-        
-        throw new Error('No JSON found in response');
-      } catch (extractError) {
-        console.warn('JSON extraction failed:', extractError.message);
-        
-        // Return fallback data if provided, otherwise return a structured error response
-        if (fallbackData) {
-          return {
-            ...fallbackData,
-            error: 'AI parsing failed, using fallback data',
-            rawResponse: aiResponse
-          };
-        }
-        
-        return {
-          error: 'Failed to parse AI response',
-          rawResponse: aiResponse,
-          fallbackUsed: true
-        };
-      }
-    }
-  }
-
-  // Helper methods to extract data from AI response
-  extractDeitiesFromResponse(strategy) {
-    const deities = [];
-    
-    // Extract from deity combinations
-    if (strategy.recommendations?.high_performing_deity_combinations) {
-      strategy.recommendations.high_performing_deity_combinations.forEach(combo => {
-        const deityNames = combo.deity_combination.split('&').map(d => d.trim());
-        deities.push(...deityNames);
-      });
-    }
-    
-    // Extract from categories
-    if (strategy.recommendations?.top_3_puja_categories) {
-      strategy.recommendations.top_3_puja_categories.forEach(cat => {
-        if (cat.category.includes('Shiva')) deities.push('Shiva');
-        if (cat.category.includes('Lakshmi')) deities.push('Lakshmi');
-        if (cat.category.includes('Krishna')) deities.push('Krishna');
-        if (cat.category.includes('Ganesha')) deities.push('Ganesha');
-        if (cat.category.includes('Radha')) deities.push('Radha');
-        if (cat.category.includes('Parvati')) deities.push('Parvati');
-        if (cat.category.includes('Kubera')) deities.push('Kubera');
-      });
-    }
-    
-    // Remove duplicates and return
-    return [...new Set(deities)].slice(0, 5);
-  }
-
-  extractOptimalTiming(strategy) {
-    if (strategy.recommendations?.optimal_timing_strategies?.length > 0) {
-      const timings = strategy.recommendations.optimal_timing_strategies
-        .map(t => t.timing)
-        .join(', ');
-      return `Recommended timing: ${timings}`;
-    }
-    return 'Early morning hours (6 AM - 8 AM) are traditionally most auspicious';
-  }
-
-  extractCulturalSignificance(strategy, month) {
-    const monthNames = ['', 'January', 'February', 'March', 'April', 'May', 'June',
-      'July', 'August', 'September', 'October', 'November', 'December'];
-    
-    if (strategy.recommendations?.recommended_themes?.length > 0) {
-      const themes = strategy.recommendations.recommended_themes
-        .map(t => t.theme)
-        .join(', ');
-      return `${monthNames[month]} is significant for: ${themes}`;
-    }
-    
-    return `${monthNames[month]} offers unique spiritual opportunities based on traditional calendar and seasonal energies`;
-  }
+// Enhanced proposition generator function
 }
 
 module.exports = new PujaController();
