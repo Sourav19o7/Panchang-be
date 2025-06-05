@@ -10,6 +10,8 @@ const path = require('path');
 const authRoutes = require('./routes/auth');
 const pujaRoutes = require('./routes/puja');
 const feedbackRoutes = require('./routes/feedback');
+const analyticsRoutes = require('./routes/analytics');
+const dashboardRoutes = require('./routes/dashboard');
 
 // Import middleware
 const errorHandler = require('./middleware/errorhandler');
@@ -62,6 +64,8 @@ app.use('/uploads', express.static(uploadsDir));
 app.use('/api/auth', authRoutes);
 app.use('/api/puja', pujaRoutes);
 app.use('/api/feedback', feedbackRoutes);
+app.use('/api/analytics', analyticsRoutes);
+app.use('/api/dashboard', dashboardRoutes);
 
 // Health check endpoint
 app.get('/health', (req, res) => {
@@ -82,6 +86,8 @@ app.get('/api', (req, res) => {
       auth: '/api/auth',
       puja: '/api/puja',
       feedback: '/api/feedback',
+      analytics: '/api/analytics',
+      dashboard: '/api/dashboard',
       health: '/health'
     }
   });
@@ -115,6 +121,8 @@ if (require.main === module) {
     console.log(`🌍 Environment: ${process.env.NODE_ENV || 'development'}`);
     console.log(`📚 API Documentation: http://localhost:${PORT}/api`);
     console.log(`💚 Health Check: http://localhost:${PORT}/health`);
+    console.log(`📊 Analytics: http://localhost:${PORT}/api/analytics`);
+    console.log(`📋 Dashboard: http://localhost:${PORT}/api/dashboard`);
   });
 }
 
